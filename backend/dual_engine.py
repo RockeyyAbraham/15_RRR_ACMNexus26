@@ -33,7 +33,9 @@ class DualModeEngine:
             'adaptive_sampling': True,
             'use_multi_hash': True,
             'parallel_processing': True,
-            'max_workers': 4
+            'max_workers': 4,
+            'auto_crop': True,
+            'detect_mirroring': True
         }
         self.video_engine = VideoHashEngine(**video_params)
         
@@ -56,9 +58,9 @@ class DualModeEngine:
         self.degraded_threshold = 90.0
         
         # Detection logic parameters (tuned for perceptual robustness)
-        self.bias = -55.0
-        self.video_weight = 0.9
-        self.audio_weight = 0.35
+        self.bias = -45.0
+        self.video_weight = 1.1
+        self.audio_weight = 0.4
         self.sigmoid_steepness = 0.08
 
     @staticmethod
@@ -132,8 +134,8 @@ class DualModeEngine:
             fused_score = video_confidence
 
         # Perceptron-style activation over confidence features
-        z = (-45.0) + (1.1 * video_confidence) + (0.4 * audio_confidence) + (5.0 if not audio_available else 0.0)
-        probability = 1.0 / (1.0 + math.exp(-0.08 * z))
+        z = (self.bias) + (self.video_weight * video_confidence) + (self.audio_weight * audio_confidence) + (5.0 if not audio_available else 0.0)
+        probability = 1.0 / (1.0 + math.exp(-self.sigmoid_steepness * z))
         pattern_score = max(fused_score, probability * 100.0)
 
         adaptive_threshold = self.matcher.threshold

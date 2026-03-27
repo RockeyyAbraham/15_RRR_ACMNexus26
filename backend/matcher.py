@@ -71,15 +71,38 @@ class VideoMatcher:
     def _compare_single_hash(self, hash1: str, hash2: str) -> Tuple[bool, float]:
         """
         Compare two single hashes using Hamming distance.
+        Supports mirrored hashes (format: "hashmflipped_hash").
         
         Args:
-            hash1: First hash
-            hash2: Second hash
+            hash1: First hash (suspect)
+            hash2: Second hash (protected)
             
         Returns:
             Tuple of (is_match, similarity_percentage)
         """
-        h1 = imagehash.hex_to_hash(hash1)
+        # If protected hash (hash2) has a mirrored version, compare against both
+        if 'm' in hash2:
+            p_normal, p_flipped = hash2.split('m')
+            
+            # Compare suspect (hash1) against normal
+            _, sim_normal = self._compare_calculation(hash1, p_normal)
+            
+            # Compare suspect (hash1) against flipped
+            _, sim_flipped = self._compare_calculation(hash1, p_flipped)
+            
+            similarity = max(sim_normal, sim_flipped)
+        else:
+            _, similarity = self._compare_calculation(hash1, hash2)
+            
+        is_match = similarity >= self.threshold
+        return is_match, similarity
+
+    def _compare_calculation(self, hash1: str, hash2: str) -> Tuple[bool, float]:
+        """Core Hamming distance calculation."""
+        # Strip mirror info from suspect if present (for symmetry)
+        h1_str = hash1.split('m')[0] if 'm' in hash1 else hash1
+        
+        h1 = imagehash.hex_to_hash(h1_str)
         h2 = imagehash.hex_to_hash(hash2)
         
         distance = h1 - h2

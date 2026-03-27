@@ -18,7 +18,8 @@ class VideoHashEngine:
     def __init__(self, frame_sample_rate: int = 10, hash_size: int = 8, 
                  adaptive_sampling: bool = False, scene_threshold: float = 30.0,
                  use_multi_hash: bool = False, parallel_processing: bool = False,
-                 max_workers: int = 4):
+                 max_workers: int = 4, auto_crop: bool = True, 
+                 detect_mirroring: bool = True):
         """
         Initialize the hash engine.
         
@@ -38,6 +39,8 @@ class VideoHashEngine:
         self.use_multi_hash = use_multi_hash
         self.parallel_processing = parallel_processing
         self.max_workers = max_workers
+        self.auto_crop = auto_crop
+        self.detect_mirroring = detect_mirroring
     
     def extract_frames(self, video_path: str) -> List[np.ndarray]:
         """
@@ -106,36 +109,60 @@ class VideoHashEngine:
         
         return is_scene_change, difference_score
     
+    def get_autocrop_rect(self, frame: np.ndarray) -> Tuple[int, int, int, int]:
+        """
+        Detect the content rectangle by removing black borders (letterboxing).
+        
+        Args:
+            frame: BGR frame array
+            
+        Returns:
+            Tuple of (x, y, w, h)
+        """
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
+        coords = cv2.findNonZero(thresh)
+        if coords is not None:
+            x, y, w, h = cv2.boundingRect(coords)
+            return x, y, w, h
+        return 0, 0, frame.shape[1], frame.shape[0]
+
+    def _prepare_frame(self, frame: np.ndarray) -> Image.Image:
+        """Apply auto-crop and convert to PIL Image."""
+        if self.auto_crop:
+            x, y, w, h = self.get_autocrop_rect(frame)
+            frame = frame[y:y+h, x:x+w]
+        
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return Image.fromarray(rgb_frame)
+
     def generate_phash(self, frame: np.ndarray) -> str:
         """
         Generate perceptual hash (pHash) for a single frame.
-        
-        Args:
-            frame: Frame array in BGR format (OpenCV default)
-            
-        Returns:
-            Hex string representation of pHash (e.g., "a3f2c1b4...")
+        Supports mirroring if self.detect_mirroring is True.
         """
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        pil_image = Image.fromarray(rgb_frame)
-        phash = imagehash.phash(pil_image, hash_size=self.hash_size)
+        img = self._prepare_frame(frame)
+        phash = imagehash.phash(img, hash_size=self.hash_size)
+        
+        if self.detect_mirroring:
+            flipped_img = img.transpose(Image.FLIP_LEFT_RIGHT)
+            flipped_phash = imagehash.phash(flipped_img, hash_size=self.hash_size)
+            return f"{phash}m{flipped_phash}"
         
         return str(phash)
     
     def generate_dhash(self, frame: np.ndarray) -> str:
         """
         Generate difference hash (dHash) for a single frame.
-        
-        Args:
-            frame: Frame array in BGR format (OpenCV default)
-            
-        Returns:
-            Hex string representation of dHash
         """
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        pil_image = Image.fromarray(rgb_frame)
-        dhash = imagehash.dhash(pil_image, hash_size=self.hash_size)
+        img = self._prepare_frame(frame)
+        dhash = imagehash.dhash(img, hash_size=self.hash_size)
         
+        if self.detect_mirroring:
+            flipped_img = img.transpose(Image.FLIP_LEFT_RIGHT)
+            flipped_dhash = imagehash.dhash(flipped_img, hash_size=self.hash_size)
+            return f"{dhash}m{flipped_dhash}"
+            
         return str(dhash)
     
     def generate_fused_hash(self, frame: np.ndarray) -> Dict[str, str]:

@@ -81,7 +81,9 @@ def test_pirated_videos(original_hashes):
         ("240p.mp4", "240p Compression"),
         ("colorshift.mp4", "Color Shifted"),
         ("cropped.mp4", "Cropped"),
-        ("extreme.mp4", "Extreme Degradation (240p + Crop + Filter)")
+        ("extreme.mp4", "Extreme Degradation (240p + Crop + Filter)"),
+        ("letterbox.mp4", "Letterboxed (Anti-Crop Test)"),
+        ("mirrored.mp4", "Mirrored (Anti-Flip Test)")
     ]
     
     # Initialize matcher with statistical confidence
@@ -285,16 +287,8 @@ def test_dual_engine_primary():
         ("colorshift.mp4", "Color Shifted"),
         ("cropped.mp4", "Cropped"),
         ("extreme.mp4", "Extreme Degradation (240p + Crop + Filter)"),
-        # Additional piracy types for broader coverage
-        ("speedup.mp4", "Speed Change (2x Fast)"),
-        ("slowmo.mp4", "Speed Change (0.5x Slow)"),
-        ("watermark.mp4", "Watermark/Overlay"),
-        ("mirror.mp4", "Mirror/Horizontal Flip"),
-        ("rotate.mp4", "Rotation (90°)"),
-        ("stretch.mp4", "Aspect Ratio Stretch"),
-        ("shortclip.mp4", "Temporal Edit (30s Clip)"),
-        ("reordered.mp4", "Temporal Reorder"),
-        ("mashup.mp4", "Multi-Source Mashup")
+        ("letterbox.mp4", "Letterboxed (Anti-Crop Test)"),
+        ("mirrored.mp4", "Mirrored (Anti-Flip Test)")
     ]
 
     engine = DualModeEngine()

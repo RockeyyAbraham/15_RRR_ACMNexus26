@@ -45,6 +45,14 @@ def generate_pirated_copy_cv2(input_path, output_dir):
     if ext_w % 2 != 0: ext_w += 1 # Ensure even dimension
     out_extreme = cv2.VideoWriter(extreme_path, fourcc, fps, (ext_w, 240))
 
+    # 5. Letterbox (Black bars)
+    letterbox_path = os.path.join(output_dir, f"{base_name}_letterbox.mp4")
+    out_letter = cv2.VideoWriter(letterbox_path, fourcc, fps, (width, height))
+
+    # 6. Mirrored (Horizontal Flip)
+    mirrored_path = os.path.join(output_dir, f"{base_name}_mirrored.mp4")
+    out_mirror = cv2.VideoWriter(mirrored_path, fourcc, fps, (width, height))
+
     print(f"--- Processing Video with OpenCV (All Piracy Types) ---")
     frame_count = 0
     while cap.isOpened() and frame_count < 300: # Limit for speed
@@ -67,11 +75,21 @@ def generate_pirated_copy_cv2(input_path, output_dir):
         out_color.write(color_frame)
 
         # 4. Extreme
-        # Resize the cropped frame down to 240p tall, then apply color shift
         if start_x >= 0:
             ext_frame = cv2.resize(crop_frame, (ext_w, 240))
             ext_frame = cv2.convertScaleAbs(ext_frame, alpha=1.3, beta=40)
             out_extreme.write(ext_frame)
+
+        # 5. Letterbox
+        letter_frame = np.zeros((height, width, 3), dtype=np.uint8)
+        shrunk = cv2.resize(frame, (int(width*0.7), int(height*0.7)))
+        sy, sx = (height - shrunk.shape[0])//2, (width - shrunk.shape[1])//2
+        letter_frame[sy:sy+shrunk.shape[0], sx:sx+shrunk.shape[1]] = shrunk
+        out_letter.write(letter_frame)
+
+        # 6. Mirrored
+        mirror_frame = cv2.flip(frame, 1)
+        out_mirror.write(mirror_frame)
 
         frame_count += 1
         if frame_count % 100 == 0:
@@ -82,8 +100,10 @@ def generate_pirated_copy_cv2(input_path, output_dir):
     out_crop.release()
     out_color.release()
     out_extreme.release()
+    out_letter.release()
+    out_mirror.release()
 
-    print(f"✓ Success - Generated 240p, Cropped, ColorShift, and Extreme versions.")
+    print(f"✓ Success - Generated 240p, Cropped, ColorShift, Extreme, Letterbox, and Mirrored versions.")
     print(f"✨ Test data generated in: {output_dir}")
 
 if __name__ == "__main__":
