@@ -1,32 +1,41 @@
 import imagehash
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 import json
+import numpy as np
+from collections import deque
 
 
 class VideoMatcher:
     """
     Matching engine for comparing video fingerprints.
     Uses Hamming distance to calculate similarity between pHashes.
+    Enhanced with sliding window matching and statistical confidence scoring.
     """
     
-    def __init__(self, threshold: float = 85.0, hash_size: int = 8):
+    def __init__(self, threshold: float = 85.0, hash_size: int = 8,
+                 window_size: int = 5, consistency_threshold: float = 0.8):
         """
         Initialize the matcher.
         
         Args:
             threshold: Minimum similarity percentage to consider a match (default: 85%)
             hash_size: Size of the pHash matrix (default: 8 = 64-bit hash)
+            window_size: Size of sliding window for temporal matching (default: 5)
+            consistency_threshold: Minimum consistency ratio for statistical confidence (default: 0.8)
         """
         self.threshold = threshold
         self.hash_size = hash_size
         self.max_distance = hash_size ** 2
+        self.window_size = window_size
+        self.consistency_threshold = consistency_threshold
     
     def compare_hashes(self, hash1: str, hash2: str) -> Tuple[bool, float]:
         """
         Compare two pHashes using Hamming distance.
+        Supports both single hashes and fused hashes (phash:dhash format).
         
         Args:
-            hash1: First pHash as hex string (e.g., "a3f2c1b4...")
+            hash1: First pHash as hex string (e.g., "a3f2c1b4..." or "phash:dhash")
             hash2: Second pHash as hex string
             
         Returns:
@@ -38,12 +47,19 @@ class VideoMatcher:
             >>> print(f"Match: {is_match}, Similarity: {score:.2f}%")
         """
         try:
-            h1 = imagehash.hex_to_hash(hash1)
-            h2 = imagehash.hex_to_hash(hash2)
-            
-            distance = h1 - h2
-            
-            similarity = (1 - (distance / self.max_distance)) * 100
+            # Check if hashes are fused (phash:dhash format)
+            if ':' in hash1 and ':' in hash2:
+                parts1 = hash1.split(':')
+                parts2 = hash2.split(':')
+                
+                # Compare both phash and dhash
+                _, phash_sim = self._compare_single_hash(parts1[0], parts2[0])
+                _, dhash_sim = self._compare_single_hash(parts1[1], parts2[1])
+                
+                # Average similarity
+                similarity = (phash_sim + dhash_sim) / 2
+            else:
+                _, similarity = self._compare_single_hash(hash1, hash2)
             
             is_match = similarity >= self.threshold
             
@@ -51,6 +67,26 @@ class VideoMatcher:
             
         except Exception as e:
             raise ValueError(f"Error comparing hashes: {e}")
+    
+    def _compare_single_hash(self, hash1: str, hash2: str) -> Tuple[bool, float]:
+        """
+        Compare two single hashes using Hamming distance.
+        
+        Args:
+            hash1: First hash
+            hash2: Second hash
+            
+        Returns:
+            Tuple of (is_match, similarity_percentage)
+        """
+        h1 = imagehash.hex_to_hash(hash1)
+        h2 = imagehash.hex_to_hash(hash2)
+        
+        distance = h1 - h2
+        similarity = (1 - (distance / self.max_distance)) * 100
+        is_match = similarity >= self.threshold
+        
+        return is_match, similarity
     
     def match_video_sequences(self, suspect_hashes: List[str], protected_hashes: List[str]) -> Dict:
         """
@@ -261,6 +297,183 @@ class VideoMatcher:
         else:
             raise ValueError("Threshold must be between 0 and 100")
     
+    def sliding_window_match(self, suspect_hashes: List[str], 
+                            protected_hashes: List[str]) -> Dict:
+        """
+        Use sliding window to find where suspect clip matches in protected content.
+        Identifies temporal location and provides localized confidence.
+        
+        Args:
+            suspect_hashes: List of pHashes from suspect video (shorter clip)
+            protected_hashes: List of pHashes from protected video (full content)
+            
+        Returns:
+            Dictionary with:
+            {
+                'is_match': bool,
+                'confidence_score': float,
+                'best_window_start': int,
+                'best_window_end': int,
+                'temporal_offset_frames': int,
+                'window_scores': List[float]
+            }
+            
+        Example:
+            >>> matcher = VideoMatcher(window_size=5)
+            >>> result = matcher.sliding_window_match(suspect_clip, full_video)
+            >>> if result['is_match']:
+            ...     print(f"Found at frames {result['best_window_start']}-{result['best_window_end']}")
+        """
+        if not suspect_hashes or not protected_hashes:
+            return {
+                'is_match': False,
+                'confidence_score': 0.0,
+                'best_window_start': -1,
+                'best_window_end': -1,
+                'temporal_offset_frames': -1,
+                'window_scores': []
+            }
+        
+        suspect_len = len(suspect_hashes)
+        protected_len = len(protected_hashes)
+        
+        if suspect_len > protected_len:
+            return {
+                'is_match': False,
+                'confidence_score': 0.0,
+                'best_window_start': -1,
+                'best_window_end': -1,
+                'temporal_offset_frames': -1,
+                'window_scores': []
+            }
+        
+        window_scores = []
+        best_score = 0.0
+        best_start = -1
+        
+        # Slide window across protected content
+        for i in range(protected_len - suspect_len + 1):
+            window = protected_hashes[i:i + suspect_len]
+            
+            # Compare suspect with this window
+            similarities = []
+            for s_hash, p_hash in zip(suspect_hashes, window):
+                _, similarity = self.compare_hashes(s_hash, p_hash)
+                similarities.append(similarity)
+            
+            avg_similarity = sum(similarities) / len(similarities)
+            window_scores.append(avg_similarity)
+            
+            if avg_similarity > best_score:
+                best_score = avg_similarity
+                best_start = i
+        
+        is_match = best_score >= self.threshold
+        best_end = best_start + suspect_len if best_start >= 0 else -1
+        
+        return {
+            'is_match': is_match,
+            'confidence_score': best_score,
+            'best_window_start': best_start,
+            'best_window_end': best_end,
+            'temporal_offset_frames': best_start,
+            'window_scores': window_scores
+        }
+    
+    def statistical_confidence_match(self, suspect_hashes: List[str],
+                                    protected_hashes: List[str]) -> Dict:
+        """
+        Calculate confidence based on consistency of matches over time.
+        Reduces false positives from transient similarity.
+        
+        Args:
+            suspect_hashes: List of pHashes from suspect video
+            protected_hashes: List of pHashes from protected video
+            
+        Returns:
+            Dictionary with statistical confidence metrics
+        """
+        if not suspect_hashes or not protected_hashes:
+            return {
+                'is_match': False,
+                'confidence_score': 0.0,
+                'consistency_ratio': 0.0,
+                'temporal_stability': 0.0,
+                'match_streak_max': 0,
+                'match_streak_avg': 0.0
+            }
+        
+        # Track consecutive matches
+        match_streaks = []
+        current_streak = 0
+        consecutive_matches = 0
+        
+        similarities = []
+        match_flags = []
+        
+        for suspect_hash in suspect_hashes:
+            best_match_sim = 0.0
+            found_match = False
+            
+            for protected_hash in protected_hashes:
+                is_match, similarity = self.compare_hashes(suspect_hash, protected_hash)
+                if similarity > best_match_sim:
+                    best_match_sim = similarity
+                if is_match:
+                    found_match = True
+                    break
+            
+            similarities.append(best_match_sim)
+            match_flags.append(found_match)
+            
+            if found_match:
+                current_streak += 1
+                consecutive_matches += 1
+            else:
+                if current_streak > 0:
+                    match_streaks.append(current_streak)
+                current_streak = 0
+        
+        if current_streak > 0:
+            match_streaks.append(current_streak)
+        
+        # Calculate consistency ratio
+        consistency_ratio = consecutive_matches / len(suspect_hashes)
+        
+        # Calculate temporal stability (variance of similarities)
+        if len(similarities) > 1:
+            mean_sim = sum(similarities) / len(similarities)
+            variance = sum((s - mean_sim) ** 2 for s in similarities) / len(similarities)
+            std_dev = variance ** 0.5
+            temporal_stability = max(0, 100 - std_dev)
+        else:
+            temporal_stability = 0.0
+        
+        # Calculate average confidence
+        avg_similarity = sum(similarities) / len(similarities) if similarities else 0
+        
+        # Adjust confidence based on consistency
+        adjusted_confidence = avg_similarity * consistency_ratio
+        
+        # Check if match is consistent enough
+        is_match = (adjusted_confidence >= self.threshold and 
+                   consistency_ratio >= self.consistency_threshold)
+        
+        max_streak = max(match_streaks) if match_streaks else 0
+        avg_streak = sum(match_streaks) / len(match_streaks) if match_streaks else 0
+        
+        return {
+            'is_match': is_match,
+            'confidence_score': adjusted_confidence,
+            'raw_confidence': avg_similarity,
+            'consistency_ratio': consistency_ratio,
+            'temporal_stability': temporal_stability,
+            'match_streak_max': max_streak,
+            'match_streak_avg': avg_streak,
+            'total_frames': len(suspect_hashes),
+            'matched_frames': consecutive_matches
+        }
+    
     def get_match_statistics(self, suspect_hashes: List[str], 
                             protected_hashes: List[str]) -> Dict:
         """
@@ -281,20 +494,29 @@ class VideoMatcher:
         
         for suspect_hash in suspect_hashes:
             for protected_hash in protected_hashes:
-                distance = self.calculate_hamming_distance(suspect_hash, protected_hash)
-                similarity = self.get_similarity_score(distance)
-                
-                hamming_distances.append(distance)
-                all_similarities.append(similarity)
+                try:
+                    if ':' in suspect_hash and ':' in protected_hash:
+                        _, similarity = self.compare_hashes(suspect_hash, protected_hash)
+                        all_similarities.append(similarity)
+                    else:
+                        distance = self.calculate_hamming_distance(suspect_hash, protected_hash)
+                        similarity = self.get_similarity_score(distance)
+                        hamming_distances.append(distance)
+                        all_similarities.append(similarity)
+                except:
+                    continue
+        
+        if not all_similarities:
+            return {}
         
         return {
             'total_comparisons': len(all_similarities),
             'average_similarity': sum(all_similarities) / len(all_similarities),
             'max_similarity': max(all_similarities),
             'min_similarity': min(all_similarities),
-            'average_hamming_distance': sum(hamming_distances) / len(hamming_distances),
-            'min_hamming_distance': min(hamming_distances),
-            'max_hamming_distance': max(hamming_distances),
+            'average_hamming_distance': sum(hamming_distances) / len(hamming_distances) if hamming_distances else 0,
+            'min_hamming_distance': min(hamming_distances) if hamming_distances else 0,
+            'max_hamming_distance': max(hamming_distances) if hamming_distances else 0,
             'threshold': self.threshold,
             'matches_above_threshold': sum(1 for s in all_similarities if s >= self.threshold)
         }
