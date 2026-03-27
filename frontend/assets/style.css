@@ -168,3 +168,239 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {
 [data-testid="stVegaLiteChart"] {
     margin-top: -15px;
 }
+
+/* Progress Bars */
+.progress-container {
+    margin-bottom: 20px;
+}
+.progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7em;
+    color: #8c8c8c;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+}
+.progress-label .ready {
+    color: #CCFF00;
+    font-weight: bold;
+}
+.progress-label .pending {
+    color: #8daeff;
+    font-weight: bold;
+}
+.progress-bar-bg {
+    background-color: #2a2c2e;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.progress-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+}
+.progress-bar-fill.yellow {
+    background-color: #CCFF00;
+    width: 100%;
+}
+.progress-bar-fill.blue {
+    background-color: #8daeff;
+    width: 60%;
+}
+
+/* Log Cards */
+.log-card {
+    background-color: #1a1c1e;
+    border: 1px solid #2a2c2e;
+    border-radius: 4px;
+    padding: 15px;
+    font-size: 0.7em;
+    color: #aaa;
+    line-height: 1.4;
+}
+.log-card.blue-bar {
+    border-left: 3px solid #8daeff;
+}
+.log-card.yellow-bar {
+    border-left: 3px solid #CCFF00;
+}
+.log-card.grey-bar {
+    border-left: 3px solid #666;
+}
+
+/* Metric Containers */
+.metric-container {
+    background-color: #1a1c1e;
+    border: 1px solid #2a2c2e;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 15px;
+}
+.metric-title {
+    font-size: 0.6em;
+    color: #666;
+    margin-bottom: 10px;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+.metric-value {
+    font-size: 2em;
+    font-weight: 800;
+    color: #FFF;
+}
+
+/* File Uploader Styling */
+[data-testid="stFileUploader"] {
+    background-color: #1a1c1e !important;
+    border: 2px dashed #2a2c2e !important;
+    border-radius: 4px !important;
+    padding: 40px 20px !important;
+    text-align: center !important;
+}
+[data-testid="stFileUploader"] span {
+    color: #666 !important;
+    font-weight: bold !important;
+    letter-spacing: 1px !important;
+}
+[data-testid="stFileUploader"] button {
+    background-color: #CCFF00 !important;
+    color: #121415 !important;
+    font-weight: 800 !important;
+    border: none !important;
+}
+
+/* Text Input Styling */
+[data-testid="stTextInput"] input {
+    background-color: #1a1c1e !important;
+    border: 1px solid #2a2c2e !important;
+    color: #FFF !important;
+    font-weight: bold !important;
+    border-radius: 4px !important;
+}
+
+/* Detection Feed Table */
+.detection-feed {
+    background-color: #1a1c1e;
+    border: 1px solid #2a2c2e;
+    border-radius: 4px;
+    padding: 20px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+.detection-item {
+    border-left: 3px solid #CCFF00;
+    padding: 10px 15px;
+    margin-bottom: 10px;
+    background-color: #121415;
+    font-size: 0.7em;
+}
+.detection-item .platform {
+    color: #CCFF00;
+    font-weight: bold;
+}
+.detection-item .timestamp {
+    color: #666;
+    font-size: 0.8em;
+}
+.detection-item .confidence {
+    color: #8daeff;
+    font-weight: bold;
+}
+.detection-item .hash {
+    color: #888;
+    font-family: monospace;
+    font-size: 0.8em;
+}
+
+/* Threat Level Display */
+.threat-level {
+    background-color: #8b0000;
+    border: 1px solid #ff4d4d;
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+}
+.threat-level .label {
+    font-size: 0.6em;
+    color: #ff6b6b;
+    font-weight: bold;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+}
+.threat-level .value {
+    font-size: 1.5em;
+    color: #ff6b6b;
+    font-weight: 800;
+    letter-spacing: 2px;
+}
+
+/* Legal Document Preview */
+.legal-preview {
+    background-color: #1a1c1e;
+    border: 1px solid #2a2c2e;
+    border-radius: 4px;
+    padding: 20px;
+    font-size: 0.8em;
+    color: #aaa;
+    line-height: 1.6;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Compliance Score */
+.compliance-score {
+    background-color: #1a1c1e;
+    border: 1px solid #2a2c2e;
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+}
+.compliance-score .score {
+    font-size: 3em;
+    font-weight: 800;
+    color: #CCFF00;
+    margin-bottom: 10px;
+}
+.compliance-score .label {
+    font-size: 0.7em;
+    color: #666;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+/* Status Pills */
+.status-pill {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.6em;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+.status-pill.green {
+    background-color: #CCFF00;
+    color: #121415;
+}
+.status-pill.blue {
+    background-color: #8daeff;
+    color: #121415;
+}
+.status-pill.red {
+    background-color: #ff6b6b;
+    color: #FFF;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #121415;
+}
+::-webkit-scrollbar-thumb {
+    background: #2a2c2e;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #3a3c3e;
+}
