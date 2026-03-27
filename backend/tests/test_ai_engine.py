@@ -6,6 +6,7 @@ Tests Groq integration, detection summaries, and DMCA generation.
 import sys
 import os
 from datetime import datetime
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def test_ai_initialization():

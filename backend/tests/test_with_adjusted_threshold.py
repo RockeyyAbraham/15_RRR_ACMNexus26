@@ -4,6 +4,8 @@ Demonstrates threshold tuning for different piracy types.
 """
 
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from hash_engine import VideoHashEngine
 from matcher import VideoMatcher
 
