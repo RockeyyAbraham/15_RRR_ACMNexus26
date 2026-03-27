@@ -7,6 +7,10 @@ import os
 from typing import Dict, List, Optional
 from datetime import datetime
 from groq import Groq
+from dotenv import load_dotenv
+
+
+load_dotenv()
 
 
 class SentinelAI:
@@ -61,13 +65,21 @@ class SentinelAI:
             ... })
             >>> print(summary)
         """
+        confidence_score = detection_data.get('confidence_score', 0)
+        if not isinstance(confidence_score, (int, float)):
+            confidence_score = 0.0
+
+        consistency_ratio = detection_data.get('consistency_ratio', 0)
+        if not isinstance(consistency_ratio, (int, float)):
+            consistency_ratio = 0.0
+
         prompt = f"""You are Sentinel, an AI-powered piracy detection system. Generate a concise, professional summary of this detection event.
 
 Detection Data:
 - Protected Content: {detection_data.get('content_title', 'Unknown')}
 - Platform: {detection_data.get('platform', 'Unknown')}
-- Confidence Score: {detection_data.get('confidence_score', 0):.2f}%
-- Temporal Consistency: {detection_data.get('consistency_ratio', 0):.2%}
+- Confidence Score: {confidence_score:.2f}%
+- Temporal Consistency: {consistency_ratio:.2%}
 - Match Location: Frames {detection_data.get('temporal_location', {}).get('start', 'N/A')}-{detection_data.get('temporal_location', {}).get('end', 'N/A')}
 - Detected At: {detection_data.get('timestamp', 'Unknown')}
 

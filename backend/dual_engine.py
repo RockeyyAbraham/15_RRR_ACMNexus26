@@ -5,6 +5,7 @@ Combines video and audio fingerprinting for maximum accuracy.
 
 import os
 import sys
+import math
 from hash_engine import VideoHashEngine
 from audio_engine import AudioHashEngine
 from matcher import VideoMatcher
@@ -51,6 +52,8 @@ class DualModeEngine:
             'consistency_threshold': 0.8
         }
         self.matcher = VideoMatcher(**matcher_params)
+        self._local_cache = {}
+        self.degraded_threshold = 74.0
 
     @staticmethod
     def _cache_key(video_path: str, mode: str) -> str:
@@ -79,9 +82,16 @@ class DualModeEngine:
         }
 
         cache_key = self._cache_key(video_path, mode)
+
+        # Fast in-process fallback cache (works even when Redis server is down)
+        if cache_key in self._local_cache:
+            print(f"  ✓ Local cache hit: {os.path.basename(video_path)} ({mode})")
+            return self._local_cache[cache_key]
+
         cached = redis_manager.get_cache(cache_key)
         if cached:
             print(f"  ✓ Cache hit: {os.path.basename(video_path)} ({mode})")
+            self._local_cache[cache_key] = cached
             return cached
         
         if mode in ['video', 'dual']:
@@ -94,9 +104,54 @@ class DualModeEngine:
             result['audio_hashes'], result['audio_metadata'] = self.audio_engine.hash_audio(video_path)
             print(f"  ✓ Audio: {len(result['audio_hashes'])} hashes")
 
+        self._local_cache[cache_key] = result
         redis_manager.set_cache(cache_key, result, ttl=3600)
         
         return result
+
+    def _pattern_recognition_decision(
+        self,
+        video_confidence: float,
+        audio_confidence: float,
+        audio_available: bool,
+    ) -> dict:
+        """
+        Perceptron-style decision layer for robust piracy detection.
+        Uses adaptive thresholding for degraded/no-audio scenarios.
+        """
+        # Feature fusion
+        if audio_available:
+            fused_score = (video_confidence * 0.65) + (audio_confidence * 0.35)
+        else:
+            fused_score = video_confidence
+
+        # Perceptron-style activation over confidence features
+        z = (-55.0) + (0.9 * video_confidence) + (0.35 * audio_confidence) + (5.0 if not audio_available else 0.0)
+        probability = 1.0 / (1.0 + math.exp(-0.08 * z))
+        pattern_score = max(fused_score, probability * 100.0)
+
+        adaptive_threshold = self.matcher.threshold
+        reason = "primary_threshold"
+
+        # If audio modality is unavailable, relax threshold slightly
+        if not audio_available:
+            adaptive_threshold = min(adaptive_threshold, 78.0)
+            reason = "audio_unavailable_adaptive"
+
+        is_match = pattern_score >= adaptive_threshold
+
+        # Final degraded-content catch-all path
+        if not is_match and video_confidence >= self.degraded_threshold:
+            is_match = True
+            reason = "degraded_content_lenient"
+
+        return {
+            'is_match': is_match,
+            'pattern_score': pattern_score,
+            'adaptive_threshold': adaptive_threshold,
+            'decision_reason': reason,
+            'probability': probability,
+        }
     
     def detect_piracy(self, suspect_path: str, protected_path: str, mode: str = 'dual') -> dict:
         """
@@ -131,6 +186,9 @@ class DualModeEngine:
             'video_confidence': 0.0,
             'audio_confidence': 0.0,
             'combined_confidence': 0.0,
+            'pattern_score': 0.0,
+            'adaptive_threshold': self.matcher.threshold,
+            'decision_reason': 'uninitialized',
             'mode': mode,
             'details': {}
         }
@@ -173,14 +231,41 @@ class DualModeEngine:
             else:
                 result['combined_confidence'] = 0.0
 
-            result['is_match'] = result['combined_confidence'] >= self.matcher.threshold
+            audio_available = bool(audio_available)
+            decision = self._pattern_recognition_decision(
+                result['video_confidence'],
+                result['audio_confidence'],
+                audio_available,
+            )
+            result['pattern_score'] = decision['pattern_score']
+            result['adaptive_threshold'] = decision['adaptive_threshold']
+            result['decision_reason'] = decision['decision_reason']
+            result['is_match'] = decision['is_match']
             print(f"  Combined confidence: {result['combined_confidence']:.2f}%")
+            print(f"  Pattern score: {result['pattern_score']:.2f}%")
+            print(f"  Adaptive threshold: {result['adaptive_threshold']:.2f}% ({result['decision_reason']})")
         elif mode == 'video':
             result['combined_confidence'] = result['video_confidence']
-            result['is_match'] = result['video_confidence'] >= self.matcher.threshold
+            decision = self._pattern_recognition_decision(
+                result['video_confidence'],
+                0.0,
+                False,
+            )
+            result['pattern_score'] = decision['pattern_score']
+            result['adaptive_threshold'] = decision['adaptive_threshold']
+            result['decision_reason'] = decision['decision_reason']
+            result['is_match'] = decision['is_match']
         elif mode == 'audio':
             result['combined_confidence'] = result['audio_confidence']
-            result['is_match'] = result['audio_confidence'] >= self.matcher.threshold
+            decision = self._pattern_recognition_decision(
+                0.0,
+                result['audio_confidence'],
+                True,
+            )
+            result['pattern_score'] = decision['pattern_score']
+            result['adaptive_threshold'] = decision['adaptive_threshold']
+            result['decision_reason'] = decision['decision_reason']
+            result['is_match'] = decision['is_match']
         
         print(f"\n{'='*80}")
         if result['is_match']:

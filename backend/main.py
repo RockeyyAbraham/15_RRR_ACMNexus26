@@ -11,11 +11,11 @@ from flask import Flask, request, jsonify, send_file
 from flask_sock import Sock
 
 # Import module classes
-from .hash_engine import VideoHashEngine
-from .matcher import VideoMatcher
-from .ai_engine import SentinelAI
-from .dmca_generator import DMCAGenerator
-from .redis_utils import redis_manager
+from hash_engine import VideoHashEngine
+from matcher import VideoMatcher
+from ai_engine import SentinelAI
+from dmca_generator import DMCAGenerator
+from redis_utils import redis_manager
 
 app = Flask(__name__)
 sock = Sock(app)  # Initialize WebSocket support

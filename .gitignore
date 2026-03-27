@@ -19,6 +19,9 @@
 __pycache__/
 *.pyc
 
+# Ignore local databases
+*.db
+
 # Ignore OS files
 .DS_Store
 Thumbs.db
