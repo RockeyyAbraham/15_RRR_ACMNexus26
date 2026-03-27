@@ -138,9 +138,21 @@ export default function DetectionPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="panel-title">Threat Surveillance</div>
-        <h1 className="panel-heading mt-3">Detection Feed</h1>
+      <div className="section-shell">
+        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="panel-title">Threat Surveillance</div>
+            <h1 className="panel-heading mt-3">Detection Feed</h1>
+            <div className="mt-3 max-w-2xl text-sm text-slate-300">
+              Watch the active piracy stream ledger, confidence shifts, and live feed updates coming back from the Sentinel detection layer.
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="data-chip">Realtime Feed</span>
+            <span className="data-chip">Confidence Sync</span>
+            <span className="data-chip">Live WebSocket</span>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_340px]">

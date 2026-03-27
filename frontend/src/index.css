@@ -42,12 +42,43 @@
     @apply rounded-2xl border border-neon/15 bg-slate-950/70 shadow-glass backdrop-blur-xl;
   }
 
+  .hud-panel {
+    @apply relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(8,12,22,0.92),rgba(5,7,13,0.82))] shadow-glass;
+  }
+
+  .hud-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(135deg, rgba(0, 234, 255, 0.06), transparent 30%),
+      linear-gradient(315deg, rgba(212, 255, 0, 0.05), transparent 28%);
+    pointer-events: none;
+  }
+
   .panel-title {
     @apply font-display text-xs uppercase tracking-[0.34em] text-neon;
   }
 
   .panel-heading {
     @apply font-display text-4xl tracking-[0.04em] text-white md:text-5xl;
+  }
+
+  .section-shell {
+    @apply relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(6,9,16,0.94),rgba(8,12,20,0.78))] p-5 shadow-glass;
+  }
+
+  .section-shell::after {
+    content: "";
+    position: absolute;
+    inset: auto 1.25rem 0.85rem 1.25rem;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(212, 255, 0, 0.35), transparent);
+    pointer-events: none;
+  }
+
+  .data-chip {
+    @apply inline-flex items-center gap-2 rounded-full border border-cyan/20 bg-cyan/10 px-3 py-1 font-display text-[10px] uppercase tracking-[0.24em] text-cyan;
   }
 
   .cyber-button {

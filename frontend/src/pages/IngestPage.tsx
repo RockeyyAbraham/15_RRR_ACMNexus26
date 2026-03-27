@@ -94,14 +94,26 @@ export default function IngestPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="panel-title">System: Operational</div>
-        <h1 className="panel-heading mt-3">Ingest Portal</h1>
+      <div className="section-shell">
+        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="panel-title">Ingestion Command</div>
+            <h1 className="panel-heading mt-3">Ingest Portal</h1>
+            <div className="mt-3 max-w-2xl text-sm text-slate-300">
+              Register protected media, generate hash signatures, and push a new asset into the Sentinel monitoring mesh.
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="data-chip">Video Lock</span>
+            <span className="data-chip">Hash Mesh</span>
+            <span className="data-chip">Live Index</span>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_340px]">
         <div className="space-y-6">
-          <div className="glass-card p-5 md:p-6">
+          <div className="hud-panel p-5 md:p-6">
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)]">
               <div>
                 <div className="panel-title mb-4">Reference Video Source</div>

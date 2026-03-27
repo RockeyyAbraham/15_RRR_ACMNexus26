@@ -21,13 +21,25 @@ const evidenceCards = [
 export default function EvidencePage() {
   return (
     <div className="space-y-6">
-      <div>
-        <div className="panel-title">Module: Evidence Viewer</div>
-        <h1 className="panel-heading mt-3">Evidence Vault</h1>
+      <div className="section-shell">
+        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="panel-title">Forensic Intelligence</div>
+            <h1 className="panel-heading mt-3">Evidence Vault</h1>
+            <div className="mt-3 max-w-2xl text-sm text-slate-300">
+              Inspect captured evidence packets, cross-match target metadata, and stage escalation-ready proof bundles.
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="data-chip">Forensic Cache</span>
+            <span className="data-chip">Frame Match</span>
+            <span className="data-chip">Escalation Ready</span>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,2.2fr)_minmax(320px,1fr)]">
-        <div className="glass-card p-6">
+        <div className="hud-panel p-6">
           <div className="panel-title mb-4">Forensic Analysis</div>
           <div className="flex h-[340px] items-center justify-center rounded-2xl border border-neon/20 bg-slate-950/80 font-display text-lg uppercase tracking-[0.18em] text-muted">
             Frame Preview Buffer
