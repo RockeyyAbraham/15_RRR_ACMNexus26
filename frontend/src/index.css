@@ -72,4 +72,49 @@
         transparent 4px
       );
   }
+
+  .splash-title {
+    text-shadow:
+      0 0 12px rgba(255, 255, 255, 0.3),
+      0 0 34px rgba(212, 255, 0, 0.45),
+      0 0 70px rgba(0, 234, 255, 0.18);
+    animation: splash-flicker 2.2s ease-in-out infinite;
+  }
+
+  .splash-ring {
+    @apply absolute h-[360px] w-[360px] rounded-full border border-cyan/20;
+    box-shadow:
+      0 0 45px rgba(0, 234, 255, 0.16),
+      inset 0 0 45px rgba(212, 255, 0, 0.08);
+    animation: splash-pulse 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes splash-pulse {
+  0%,
+  100% {
+    transform: translateZ(0) scale(0.98);
+    opacity: 0.65;
+  }
+
+  50% {
+    transform: translateZ(0) scale(1.04);
+    opacity: 1;
+  }
+}
+
+@keyframes splash-flicker {
+  0%,
+  18%,
+  22%,
+  52%,
+  56%,
+  100% {
+    opacity: 1;
+  }
+
+  20%,
+  54% {
+    opacity: 0.86;
+  }
 }
