@@ -1,26 +1,25 @@
 """
 Sentinel Backend Central Hub - Flask REST & WebSocket API.
-Connecting Video pHash Hashing, Groq AI Summaries, and DMCA PDF Generation.
+Provides high-fidelity piracy detection, AI summaries, and automated DMCA generation.
 """
 
 import os
 import json
 import sqlite3
-import uuid
-import time
-import logging
-import threading
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
 from flask_sock import Sock
+from werkzeug.utils import secure_filename
 
-# Import module classes
+# Engine Imports
 from engines.hash_engine import VideoHashEngine
-from engines.matcher import VideoMatcher
-from engines.ai_engine import SentinelAI
 from engines.audio_engine import AudioHashEngine
+from engines.matcher import VideoMatcher
+from engines.dual_engine import DualModeEngine
+from engines.ai_engine import SentinelAI
 from generators.dmca_generator import DMCAGenerator
 from utils.redis_utils import redis_manager
 
@@ -38,14 +37,13 @@ NOTICES_DIR = BACKEND_DIR.parent / "notices"
 AUTO_ACTION_THRESHOLD = float(os.getenv("AUTO_ACTION_THRESHOLD", "85"))
 MANUAL_REVIEW_THRESHOLD = float(os.getenv("MANUAL_REVIEW_THRESHOLD", "75"))
 MAX_ASYNC_WORKERS = int(os.getenv("MAX_ASYNC_WORKERS", "2"))
-MAX_QUEUE_SIZE = int(os.getenv("MAX_QUEUE_SIZE", "20"))
 
 # Initialize engine instances
 hash_engine = VideoHashEngine(frame_sample_rate=10, hash_size=8)
 matcher = VideoMatcher(threshold=85.0, hash_size=8)
 audio_engine = AudioHashEngine()
-ai_engine = None
-generator = DMCAGenerator(output_dir=str(NOTICES_DIR))
+ai_engine = SentinelAI()
+generator = DMCAGenerator(output_dir="../notices")
 
 # Ensure notices directory exists
 NOTICES_DIR.mkdir(parents=True, exist_ok=True)
@@ -88,8 +86,6 @@ def create_job(job_type: str, payload: dict):
             "job_id": job_id,
             "job_type": job_type,
             "status": "queued",
-            "stage": "queued",
-            "cancel_requested": False,
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
             "payload": payload,
@@ -112,37 +108,6 @@ def get_job(job_id: str):
         return jobs.get(job_id)
 
 
-def get_active_job_count():
-    with jobs_lock:
-        return sum(1 for j in jobs.values() if j.get("status") in ["queued", "running"]) 
-
-
-def request_job_cancel(job_id: str):
-    with jobs_lock:
-        job = jobs.get(job_id)
-        if not job:
-            return None
-        if job.get("status") in ["completed", "failed", "cancelled"]:
-            return job
-        job["cancel_requested"] = True
-        if job.get("status") == "queued":
-            job["status"] = "cancelled"
-            job["stage"] = "cancelled"
-        else:
-            job["stage"] = "cancel_requested"
-        job["updated_at"] = datetime.now().isoformat()
-        return job
-
-
-def set_job_stage(job_id: str, stage: str):
-    update_job(job_id, stage=stage)
-
-
-def should_abort(job_id: str):
-    job = get_job(job_id)
-    return bool(job and job.get("cancel_requested"))
-
-
 def classify_detection_tier(score: float):
     """Classify a confidence score into action tiers using configured thresholds."""
     if score >= AUTO_ACTION_THRESHOLD:
@@ -155,8 +120,7 @@ def classify_detection_tier(score: float):
 # Database setup
 def init_db():
     """Initialize SQLite database with required tables."""
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect("../data/sentinel.db")
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS protected_content (
@@ -181,35 +145,16 @@ def init_db():
             FOREIGN KEY (protected_content_id) REFERENCES protected_content(id)
         )
     """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_detections_detected_at ON detections(detected_at)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_detections_content_id ON detections(protected_content_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_protected_uploaded_at ON protected_content(uploaded_at)")
     conn.commit()
     conn.close()
 
 
-def process_protected_video(video_path: Path, title: str, league: str, progress_cb=None, cancel_cb=None):
+def process_protected_video(video_path: Path, title: str, league: str):
     """Core protected-content processing logic used by sync and async routes."""
     start = time.perf_counter()
 
-    if progress_cb:
-        progress_cb("hashing_video")
-    if cancel_cb and cancel_cb():
-        raise RuntimeError("Job cancelled")
-
     video_hashes, video_metadata = hash_engine.hash_video(video_path)
-
-    if progress_cb:
-        progress_cb("hashing_audio")
-    if cancel_cb and cancel_cb():
-        raise RuntimeError("Job cancelled")
-
     audio_hash = audio_engine.extract_audio_hash(video_path)
-
-    if progress_cb:
-        progress_cb("persisting")
-    if cancel_cb and cancel_cb():
-        raise RuntimeError("Job cancelled")
 
     conn = sqlite3.connect(str(DB_PATH))
     cursor = conn.cursor()
@@ -230,8 +175,9 @@ def process_protected_video(video_path: Path, title: str, league: str, progress_
     conn.commit()
     conn.close()
 
-    if content_id is not None:
-        redis_manager.cache_protected_hashes(content_id, video_hashes, ttl=3600)
+        # Cache hashes in Redis for fast retrieval
+        if content_id is not None:
+            redis_manager.cache_protected_hashes(content_id, video_hashes, ttl=3600)
 
     elapsed = time.perf_counter() - start
     log_event(
@@ -254,28 +200,12 @@ def process_protected_video(video_path: Path, title: str, league: str, progress_
     }
 
 
-def process_suspect_video(video_path: Path, stream_url: str, progress_cb=None, cancel_cb=None):
+def process_suspect_video(video_path: Path, stream_url: str):
     """Core suspect-content processing logic used by sync and async routes."""
     start = time.perf_counter()
 
-    if progress_cb:
-        progress_cb("hashing_video")
-    if cancel_cb and cancel_cb():
-        raise RuntimeError("Job cancelled")
-
     suspect_hashes, suspect_metadata = hash_engine.hash_video(video_path)
-
-    if progress_cb:
-        progress_cb("hashing_audio")
-    if cancel_cb and cancel_cb():
-        raise RuntimeError("Job cancelled")
-
     suspect_audio_hash = audio_engine.extract_audio_hash(video_path)
-
-    if progress_cb:
-        progress_cb("matching")
-    if cancel_cb and cancel_cb():
-        raise RuntimeError("Job cancelled")
 
     protected_ids = redis_manager.get_all_protected_content_ids()
     if not protected_ids:
@@ -285,112 +215,113 @@ def process_suspect_video(video_path: Path, stream_url: str, progress_cb=None, c
         protected_ids = [row[0] for row in cursor.fetchall()]
         conn.close()
 
-    detections = []
-    conn = sqlite3.connect(str(DB_PATH))
-    cursor = conn.cursor()
+        # Get protected content details and hashes
+        detections = []
+        conn = sqlite3.connect("../data/sentinel.db")
+        cursor = conn.cursor()
 
-    for content_id in protected_ids:
-        title = "Unknown"
-        league = "Unknown"
-        protected_hashes = []
-        protected_audio_hash = None
+        for content_id in protected_ids:
+            # Initialize variables to avoid UnboundLocalError
+            title = "Unknown"
+            league = "Unknown"
+            protected_hashes = []
+            protected_audio_hash = None
 
-        cached_hashes = redis_manager.get_protected_hashes(content_id)
-        if cached_hashes is not None:
-            protected_hashes = cached_hashes
-            cursor.execute(
-                "SELECT title, league, audio_hash FROM protected_content WHERE id = ?",
-                (content_id,),
+            # Try to get hashes from Redis cache first
+            cached_hashes = redis_manager.get_protected_hashes(content_id)
+            if cached_hashes is not None:
+                protected_hashes = cached_hashes
+                # Get title and league from database since we don't cache them
+                cursor.execute(
+                    "SELECT title, league, audio_hash FROM protected_content WHERE id = ?",
+                    (content_id,),
+                )
+                row = cursor.fetchone()
+                if row is not None:
+                    title, league, protected_audio_hash = row
+            else:
+                # Fallback to database
+                cursor.execute(
+                    "SELECT title, league, video_hashes, audio_hash, duration_seconds FROM protected_content WHERE id = ?",
+                    (content_id,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    continue
+                title, league, video_hashes_json, protected_audio_hash, duration = row
+                protected_hashes = json.loads(video_hashes_json)
+
+            # Match suspect hashes against protected hashes
+            video_match_result = matcher.match_video_sequences(
+                suspect_hashes, protected_hashes
             )
-            row = cursor.fetchone()
-            if row is not None:
-                title, league, protected_audio_hash = row
-        else:
-            cursor.execute(
-                "SELECT title, league, video_hashes, audio_hash FROM protected_content WHERE id = ?",
-                (content_id,),
-            )
-            row = cursor.fetchone()
-            if row is None:
-                continue
-            title, league, video_hashes_json, protected_audio_hash = row
-            protected_hashes = json.loads(video_hashes_json)
+            
+            # Audio matching if both hashes exist
+            audio_match_score = 0.0
+            if suspect_audio_hash and protected_audio_hash:
+                _, audio_match_score = matcher.compare_hashes(suspect_audio_hash, protected_audio_hash)
+            
+            # Multi-modal confidence scoring
+            # Weight video matching more heavily (70%) than audio (30%)
+            video_confidence = video_match_result["confidence_score"]
+            audio_confidence = audio_match_score
+            
+            if audio_confidence > 0:  # Audio match available
+                combined_confidence = (video_confidence * 0.7) + (audio_confidence * 0.3)
+            else:  # Video only
+                combined_confidence = video_confidence
+            
+            # Adjust match result with combined confidence
+            video_match_result["confidence_score"] = combined_confidence
+            video_match_result["audio_match_score"] = audio_confidence
+            video_match_result["video_match_score"] = video_confidence
+            video_match_result["multi_modal"] = audio_confidence > 0
 
-        video_match_result = matcher.match_video_sequences(suspect_hashes, protected_hashes)
+            if video_match_result["is_match"]:
+                # Store detection event
+                cursor.execute(
+                    """
+                    INSERT INTO detections (protected_content_id, stream_url, confidence_score)
+                    VALUES (?, ?, ?)
+                """,
+                    (
+                        content_id,
+                        request.form.get("stream_url", "unknown"),
+                        video_match_result["confidence_score"],
+                    ),
+                )
+                detection_id = cursor.lastrowid
 
-        audio_match_score = 0.0
-        if suspect_audio_hash and protected_audio_hash:
-            _, audio_match_score = matcher.compare_hashes(suspect_audio_hash, protected_audio_hash)
+                # Cache detection result in Redis
+                if detection_id is not None:
+                    detection_data = {
+                        "detection_id": detection_id,
+                        "content_id": content_id,
+                        "confidence_score": video_match_result["confidence_score"],
+                        "stream_url": request.form.get("stream_url", "unknown"),
+                        "detected_at": datetime.now().isoformat(),
+                        "match_details": video_match_result,
+                    }
+                    redis_manager.cache_detection_result(
+                        detection_id, detection_data, ttl=1800
+                    )
 
-        video_confidence = video_match_result["confidence_score"]
-        audio_confidence = audio_match_score
-        combined_confidence = (video_confidence * 0.7) + (audio_confidence * 0.3) if audio_confidence > 0 else video_confidence
+                detections.append(
+                    {
+                        "detection_id": detection_id,
+                        "content_id": content_id,
+                        "title": title,
+                        "league": league,
+                        "confidence_score": video_match_result["confidence_score"],
+                        "audio_match_score": video_match_result.get("audio_match_score", 0.0),
+                        "video_match_score": video_match_result.get("video_match_score", 0.0),
+                        "multi_modal": video_match_result.get("multi_modal", False),
+                        "stream_url": request.form.get("stream_url", "unknown"),
+                    }
+                )
 
-        decision_tier, decision_reason = classify_detection_tier(combined_confidence)
-
-        is_match = decision_tier != "no_match"
-
-        video_match_result["confidence_score"] = combined_confidence
-        video_match_result["audio_match_score"] = audio_confidence
-        video_match_result["video_match_score"] = video_confidence
-        video_match_result["multi_modal"] = audio_confidence > 0
-        video_match_result["is_match"] = is_match
-        video_match_result["decision_tier"] = decision_tier
-        video_match_result["decision_reason"] = decision_reason
-
-        if is_match:
-            cursor.execute(
-                """
-                INSERT INTO detections (protected_content_id, stream_url, confidence_score)
-                VALUES (?, ?, ?)
-            """,
-                (content_id, stream_url, combined_confidence),
-            )
-            detection_id = cursor.lastrowid
-
-            if detection_id is not None:
-                detection_data = {
-                    "detection_id": detection_id,
-                    "content_id": content_id,
-                    "confidence_score": combined_confidence,
-                    "decision_tier": decision_tier,
-                    "decision_reason": decision_reason,
-                    "stream_url": stream_url,
-                    "detected_at": datetime.now().isoformat(),
-                    "match_details": video_match_result,
-                }
-                redis_manager.cache_detection_result(detection_id, detection_data, ttl=1800)
-
-            detections.append(
-                {
-                    "detection_id": detection_id,
-                    "content_id": content_id,
-                    "title": title,
-                    "league": league,
-                    "confidence_score": combined_confidence,
-                    "audio_match_score": audio_confidence,
-                    "video_match_score": video_confidence,
-                    "multi_modal": audio_confidence > 0,
-                    "decision_tier": decision_tier,
-                    "decision_reason": decision_reason,
-                    "stream_url": stream_url,
-                }
-            )
-
-            log_event(
-                "detection_created",
-                detection_id=detection_id,
-                protected_content_id=content_id,
-                stream_url=stream_url,
-                confidence_score=combined_confidence,
-                video_score=video_confidence,
-                audio_score=audio_confidence,
-                decision_tier=decision_tier,
-                decision_reason=decision_reason,
-            )
-
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
 
     elapsed = time.perf_counter() - start
     log_event(
@@ -414,39 +345,25 @@ def process_suspect_video(video_path: Path, stream_url: str, progress_cb=None, c
 
 def submit_background_job(job_id: str, job_type: str, video_path: Path, payload: dict):
     """Execute fingerprinting work asynchronously and persist status in-memory."""
-    job = get_job(job_id)
-    if not job or job.get("status") == "cancelled":
-        return
-
-    update_job(job_id, status="running", stage="starting", started_at=datetime.now().isoformat())
+    update_job(job_id, status="running")
     try:
         if job_type == "protected_upload":
             result = process_protected_video(
                 video_path=video_path,
                 title=payload.get("title", "Unknown"),
                 league=payload.get("league", "Unknown"),
-                progress_cb=lambda s: set_job_stage(job_id, s),
-                cancel_cb=lambda: should_abort(job_id),
             )
         elif job_type == "suspect_upload":
             result = process_suspect_video(
                 video_path=video_path,
                 stream_url=payload.get("stream_url", "unknown"),
-                progress_cb=lambda s: set_job_stage(job_id, s),
-                cancel_cb=lambda: should_abort(job_id),
             )
         else:
             raise ValueError(f"Unsupported job type: {job_type}")
 
-        if should_abort(job_id):
-            update_job(job_id, status="cancelled", stage="cancelled")
-        else:
-            update_job(job_id, status="completed", stage="completed", result=result, completed_at=datetime.now().isoformat())
+        update_job(job_id, status="completed", result=result)
     except Exception as e:
-        if "cancelled" in str(e).lower() or should_abort(job_id):
-            update_job(job_id, status="cancelled", stage="cancelled")
-        else:
-            update_job(job_id, status="failed", stage="failed", error=str(e))
+        update_job(job_id, status="failed", error=str(e))
     finally:
         try:
             if os.path.exists(video_path):
@@ -520,9 +437,6 @@ def upload_suspect():
 
 @app.route("/upload/protected/async", methods=["POST"])
 def upload_protected_async():
-        if get_active_job_count() >= MAX_QUEUE_SIZE:
-            return jsonify({"error": "Async queue is full. Try again shortly."}), 429
-
     """Queue protected-content hashing in background and return a job handle."""
     if "video" not in request.files:
         return jsonify({"error": "No video file provided"}), 400
@@ -548,9 +462,6 @@ def upload_protected_async():
 
 @app.route("/upload/suspect/async", methods=["POST"])
 def upload_suspect_async():
-        if get_active_job_count() >= MAX_QUEUE_SIZE:
-            return jsonify({"error": "Async queue is full. Try again shortly."}), 429
-
     """Queue suspect-content fingerprinting in background and return a job handle."""
     if "video" not in request.files:
         return jsonify({"error": "No video file provided"}), 400
@@ -577,15 +488,6 @@ def upload_suspect_async():
 def get_job_status(job_id):
     """Get status and result/error for an async fingerprinting job."""
     job = get_job(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
-    return jsonify(job), 200
-
-
-@app.route("/jobs/<job_id>/cancel", methods=["POST"])
-def cancel_job(job_id):
-    """Request cancellation for a queued or running async job."""
-    job = request_job_cancel(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
     return jsonify(job), 200
@@ -635,13 +537,15 @@ def get_metrics_summary():
                 },
                 "async": {
                     "max_workers": MAX_ASYNC_WORKERS,
-                    "max_queue_size": MAX_QUEUE_SIZE,
                     "tracked_jobs": len(jobs),
-                    "active_jobs": get_active_job_count(),
                 },
             }
         ), 200
+
     except Exception as e:
+        # Clean up temp file on error
+        if os.path.exists(video_path):
+            os.remove(video_path)
         return jsonify({"error": str(e)}), 500
 
 
@@ -649,41 +553,34 @@ def get_metrics_summary():
 def get_detections():
     """Retrieve all logged piracy events."""
     try:
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = sqlite3.connect("../data/sentinel.db")
         cursor = conn.cursor()
         cursor.execute("""
             SELECT d.id, p.title, p.league, d.stream_url, d.confidence_score, d.detected_at
             FROM detections d
             JOIN protected_content p ON d.protected_content_id = p.id
+            WHERE d.confidence_score >= ?
             ORDER BY d.detected_at DESC
-        """)
-        rows = cursor.fetchall()
-        conn.close()
-
-        detections = []
-        for row in rows:
-            detections.append(
-                {
-                    "id": row[0],
-                    "title": row[1],
-                    "league": row[2],
-                    "stream_url": row[3],
-                    "confidence_score": row[4],
-                    "detected_at": row[5],
-                }
-            )
-
-        return jsonify(detections), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+            LIMIT ? OFFSET ?
+        """, (min_conf, limit, offset)).fetchall()
+        
+    detections = []
+    for r in rows:
+        detections.append(dict(r))
+        
+    return jsonify({
+        "detections": detections,
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    })
 
 @app.route("/detections/<int:detection_id>/dmca", methods=["GET"])
 def generate_dmca(detection_id):
     """Programmatically create and download a DMCA Notice PDF."""
     try:
         # Fetch detection details from DB
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = sqlite3.connect("../data/sentinel.db")
         cursor = conn.cursor()
         cursor.execute(
             """
@@ -726,7 +623,7 @@ def generate_dmca(detection_id):
         )
 
         # Update database to mark DMCA as generated
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = sqlite3.connect("../data/sentinel.db")
         cursor = conn.cursor()
         cursor.execute(
             "UPDATE detections SET dmca_generated = TRUE WHERE id = ?", (detection_id,)
@@ -741,18 +638,12 @@ def generate_dmca(detection_id):
         )
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+        return error_response(str(e))
 
 @app.route("/health", methods=["GET"])
 def health_check():
     """System health check for monitor status."""
-    engines_status = ["hashing", "matching", "generator"]
-    if get_ai_engine() is not None:
-        engines_status.append("ai")
-    else:
-        engines_status.append("ai_unavailable")
-
+    engines_status = ["hashing", "matching", "ai", "generator"]
     if redis_manager.is_available():
         engines_status.append("redis")
     else:
@@ -764,9 +655,7 @@ def health_check():
             "engines": engines_status,
             "async": {
                 "max_workers": MAX_ASYNC_WORKERS,
-                "max_queue_size": MAX_QUEUE_SIZE,
                 "tracked_jobs": len(jobs),
-                "active_jobs": get_active_job_count(),
             },
             "timestamp": datetime.now().isoformat(),
         }
@@ -775,15 +664,16 @@ def health_check():
 
 # --- WEBSOCKETS ---
 @sock.route("/live")
-def handle_live_detections(ws):
-    """Push real-time detection events to the Flutter dashboard."""
-    # Simple implementation: send current detections every 5 seconds
-    # In a production system, we would listen for database changes or use a queue
-    import time
-
+def handle_live(ws):
+    recent = redis_manager.get_latest_detections(10)
+    if recent:
+        ws.send(json.dumps({"type": "detections_update", "data": recent, "timestamp": datetime.now().isoformat()}))
+        
+    last_timestamp = datetime.now()
+    
     while True:
         try:
-            conn = sqlite3.connect(str(DB_PATH))
+            conn = sqlite3.connect("../data/sentinel.db")
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT d.id, p.title, p.league, d.stream_url, d.confidence_score, d.detected_at
@@ -814,7 +704,5 @@ def handle_live_detections(ws):
             print(f"WebSocket error: {e}")
             break
 
-
 if __name__ == "__main__":
-    # Start the Flask development server on port 8000
-    app.run(debug=True, port=8000)
+    app.run(debug=True, port=8000, host='0.0.0.0')
