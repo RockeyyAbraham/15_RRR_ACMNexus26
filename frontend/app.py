@@ -1,10 +1,11 @@
 import streamlit as st
 
-st.set_page_config(page_title="Splash - SENTINEL", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="SENTINEL - Global Intelligence Framework", layout="wide", initial_sidebar_state="expanded")
 
 with open("frontend/assets/style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
+# Main landing page content
 st.markdown("""
 <div style="height: 70vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
     <div style="font-size: 6em; color: #CCFF00; font-weight: 800; letter-spacing: 12px; line-height: 1; margin-bottom: 15px; text-shadow: 0 0 40px rgba(204, 255, 0, 0.4);">SENTINEL</div>

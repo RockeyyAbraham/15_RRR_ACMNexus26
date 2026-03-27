@@ -4,16 +4,18 @@ import numpy as np
 import time
 
 st.set_page_config(page_title="Ingest - SENTINEL", layout="wide", initial_sidebar_state="expanded")
+
 with open("frontend/assets/style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 st.markdown("""
 <div class="navbar">
     <div style="font-size: 1.6em; color: #CCFF00; margin-right: 40px; font-weight: 800; letter-spacing: 2px;">SENTINEL_NODE</div>
+    <div class="tab"><a href="?page=1_Dashboard" style="color: #8c8c8c; text-decoration: none;">DASHBOARD</a></div>
     <div class="tab active-tab">INGEST</div>
-    <div class="tab">DETECTION</div>
-    <div class="tab">EVIDENCE</div>
-    <div class="tab">LEGAL</div>
+    <div class="tab"><a href="?page=3_Detection" style="color: #8c8c8c; text-decoration: none;">DETECTION</a></div>
+    <div class="tab"><a href="?page=4_Evidence" style="color: #8c8c8c; text-decoration: none;">EVIDENCE</a></div>
+    <div class="tab"><a href="?page=5_Legal" style="color: #8c8c8c; text-decoration: none;">LEGAL</a></div>
     <div style="flex-grow: 1;"></div>
     <div style="color: #666; font-size: 0.8em; border: 1px solid #222; padding: 10px 20px; border-radius: 4px; background-color: #1C1D1F;">((•)) NODE_8829-X_ACTIVE</div>
 </div>
@@ -34,6 +36,10 @@ with left_col:
         st.markdown("<div style='font-size: 0.7em; color:#8c8c8c; margin-bottom: 15px; letter-spacing: 1.5px;'>REFERENCE VIDEO SOURCE</div>", unsafe_allow_html=True)
         uploaded_file = st.file_uploader("DRAG_DROP_VIDEO_SOURCE", type=["mp4", "mkv", "mov"], label_visibility="collapsed")
         
+        if uploaded_file is not None:
+            st.success(f"File uploaded: {uploaded_file.name}")
+            # Process file logic here
+        
     with inner_right:
         st.markdown("<div style='font-size: 0.7em; color:#8c8c8c; margin-bottom: -15px; letter-spacing: 1.5px;'>LEAGUE NAME</div>", unsafe_allow_html=True)
         league = st.text_input("League", value="EURO_PREMIER_CHAMPIONSHIP", label_visibility="collapsed")
@@ -48,16 +54,19 @@ with left_col:
     
     st.markdown("<br><br>", unsafe_allow_html=True)
     p_col1, p_col2 = st.columns(2, gap="medium")
-    with p_col1:
+    with p_col1: 
         st.markdown("<div class='progress-container'><div class='progress-label'><span>VIDEO_PHASH</span><span class='ready'>READY</span></div><div class='progress-bar-bg'><div class='progress-bar-fill yellow'></div></div></div>", unsafe_allow_html=True)
-    with p_col2:
+    with p_col2: 
         st.markdown("<div class='progress-container'><div class='progress-label'><span>AUDIO_SPECTROGRAM</span><span class='pending'>ANALYSIS PENDING</span></div><div class='progress-bar-bg'><div class='progress-bar-fill blue'></div></div></div>", unsafe_allow_html=True)
 
     st.markdown("<br><br><br>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3, gap="medium")
-    with c1: st.markdown("<div class='log-card blue-bar'><div style='font-size: 0.8em; color:#888; font-weight:bold; margin-bottom:8px; letter-spacing:1px;'>EVENT_LOG_ID_092</div>Encrypted manifest verified at T-0ms. Local node handshake successful.</div>", unsafe_allow_html=True)
-    with c2: st.markdown("<div class='log-card yellow-bar'><div style='font-size: 0.8em; color:#CCFF00; font-weight:bold; margin-bottom:8px; letter-spacing:1px;'>NODE_LATENCY</div>Global sync offset: 0.002ms.<br>High-fidelity extraction active.</div>", unsafe_allow_html=True)
-    with c3: st.markdown("<div class='log-card grey-bar'><div style='font-size: 0.8em; color:#888; font-weight:bold; margin-bottom:8px; letter-spacing:1px;'>GEO_REDUNDANCY</div>Paris-IX and US-East data mirroring locked. Backup secure.</div>", unsafe_allow_html=True)
+    with c1: 
+        st.markdown("<div class='log-card blue-bar'><div style='font-size: 0.8em; color:#888; font-weight:bold; margin-bottom:8px; letter-spacing:1px;'>EVENT_LOG_ID_092</div>Encrypted manifest verified at T-0ms. Local node handshake successful.</div>", unsafe_allow_html=True)
+    with c2: 
+        st.markdown("<div class='log-card yellow-bar'><div style='font-size: 0.8em; color:#CCFF00; font-weight:bold; margin-bottom:8px; letter-spacing:1px;'>NODE_LATENCY</div>Global sync offset: 0.002ms.<br>High-fidelity extraction active.</div>", unsafe_allow_html=True)
+    with c3: 
+        st.markdown("<div class='log-card grey-bar'><div style='font-size: 0.8em; color:#888; font-weight:bold; margin-bottom:8px; letter-spacing:1px;'>GEO_REDUNDANCY</div>Paris-IX and US-East data mirroring locked. Backup secure.</div>", unsafe_allow_html=True)
 
 with right_col:
     st.markdown("<div style='font-size: 0.7em; color:#8c8c8c; margin-bottom: 5px; font-weight:bold; letter-spacing: 1.5px;'>GLOBAL INTEGRITY MONITOR</div>", unsafe_allow_html=True)
