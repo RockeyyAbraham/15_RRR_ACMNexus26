@@ -1,0 +1,191 @@
+"""
+Sentinel Dual-Mode Detection Engine
+Combines video and audio fingerprinting for maximum accuracy.
+"""
+
+import os
+import sys
+from hash_engine import VideoHashEngine
+from audio_engine import AudioHashEngine
+from matcher import VideoMatcher
+
+
+class DualModeEngine:
+    """
+    Dual-mode piracy detection using both video and audio fingerprinting.
+    Provides higher confidence and catches more sophisticated piracy attempts.
+    """
+    
+    def __init__(self, video_config=None, audio_config=None, matcher_config=None):
+        """
+        Initialize dual-mode engine.
+        
+        Args:
+            video_config: Dict of VideoHashEngine parameters
+            audio_config: Dict of AudioHashEngine parameters
+            matcher_config: Dict of VideoMatcher parameters
+        """
+        # Initialize video engine with enhanced features
+        video_params = video_config or {
+            'frame_sample_rate': 10,
+            'adaptive_sampling': True,
+            'use_multi_hash': True,
+            'parallel_processing': True,
+            'max_workers': 4
+        }
+        self.video_engine = VideoHashEngine(**video_params)
+        
+        # Initialize audio engine
+        audio_params = audio_config or {
+            'sample_rate': 22050,
+            'n_mels': 128,
+            'hash_size': 8,
+            'chunk_duration': 5
+        }
+        self.audio_engine = AudioHashEngine(**audio_params)
+        
+        # Initialize matcher
+        matcher_params = matcher_config or {
+            'threshold': 85.0,
+            'consistency_threshold': 0.8
+        }
+        self.matcher = VideoMatcher(**matcher_params)
+    
+    def process_video(self, video_path: str, mode: str = 'dual') -> dict:
+        """
+        Process video with specified mode.
+        
+        Args:
+            video_path: Path to video file
+            mode: 'video', 'audio', or 'dual'
+            
+        Returns:
+            Dict with hashes and metadata
+        """
+        result = {
+            'video_path': video_path,
+            'mode': mode,
+            'video_hashes': None,
+            'audio_hashes': None,
+            'video_metadata': None,
+            'audio_metadata': None
+        }
+        
+        if mode in ['video', 'dual']:
+            print(f"  Processing video fingerprints...")
+            result['video_hashes'], result['video_metadata'] = self.video_engine.hash_video(video_path)
+            print(f"  ✓ Video: {len(result['video_hashes'])} hashes")
+        
+        if mode in ['audio', 'dual']:
+            print(f"  Processing audio fingerprints...")
+            result['audio_hashes'], result['audio_metadata'] = self.audio_engine.hash_audio(video_path)
+            print(f"  ✓ Audio: {len(result['audio_hashes'])} hashes")
+        
+        return result
+    
+    def detect_piracy(self, suspect_path: str, protected_path: str, mode: str = 'dual') -> dict:
+        """
+        Detect piracy using dual-mode verification.
+        
+        Args:
+            suspect_path: Path to suspect video
+            protected_path: Path to protected video
+            mode: 'video', 'audio', or 'dual'
+            
+        Returns:
+            Detection result with confidence scores
+        """
+        print(f"\n{'='*80}")
+        print(f"DUAL-MODE PIRACY DETECTION")
+        print(f"{'='*80}")
+        print(f"Mode: {mode.upper()}")
+        print(f"Suspect: {os.path.basename(suspect_path)}")
+        print(f"Protected: {os.path.basename(protected_path)}")
+        
+        # Process both videos
+        print(f"\n[1/3] Processing protected content...")
+        protected = self.process_video(protected_path, mode)
+        
+        print(f"\n[2/3] Processing suspect content...")
+        suspect = self.process_video(suspect_path, mode)
+        
+        print(f"\n[3/3] Analyzing matches...")
+        
+        result = {
+            'is_match': False,
+            'video_confidence': 0.0,
+            'audio_confidence': 0.0,
+            'combined_confidence': 0.0,
+            'mode': mode,
+            'details': {}
+        }
+        
+        # Video matching
+        if mode in ['video', 'dual'] and suspect['video_hashes'] and protected['video_hashes']:
+            video_result = self.matcher.match_video_sequences(
+                suspect['video_hashes'],
+                protected['video_hashes']
+            )
+            result['video_confidence'] = video_result['confidence_score']
+            result['details']['video'] = video_result
+            print(f"  Video confidence: {result['video_confidence']:.2f}%")
+        
+        # Audio matching
+        if mode in ['audio', 'dual'] and suspect['audio_hashes'] and protected['audio_hashes']:
+            audio_result = self.matcher.match_video_sequences(
+                suspect['audio_hashes'],
+                protected['audio_hashes']
+            )
+            result['audio_confidence'] = audio_result['confidence_score']
+            result['details']['audio'] = audio_result
+            print(f"  Audio confidence: {result['audio_confidence']:.2f}%")
+        
+        # Combined decision
+        if mode == 'dual':
+            # Weighted average (video 60%, audio 40%)
+            result['combined_confidence'] = (
+                result['video_confidence'] * 0.6 + 
+                result['audio_confidence'] * 0.4
+            )
+            result['is_match'] = result['combined_confidence'] >= self.matcher.threshold
+            print(f"  Combined confidence: {result['combined_confidence']:.2f}%")
+        elif mode == 'video':
+            result['combined_confidence'] = result['video_confidence']
+            result['is_match'] = result['video_confidence'] >= self.matcher.threshold
+        elif mode == 'audio':
+            result['combined_confidence'] = result['audio_confidence']
+            result['is_match'] = result['audio_confidence'] >= self.matcher.threshold
+        
+        print(f"\n{'='*80}")
+        if result['is_match']:
+            print(f"🔴 PIRACY DETECTED - {result['combined_confidence']:.2f}% confidence")
+        else:
+            print(f"✅ NO MATCH - {result['combined_confidence']:.2f}% confidence")
+        print(f"{'='*80}")
+        
+        return result
+
+
+if __name__ == "__main__":
+    print("\n" + "="*80)
+    print("SENTINEL DUAL-MODE ENGINE - DEMO")
+    print("="*80)
+    
+    # Initialize engine
+    engine = DualModeEngine()
+    
+    # Test paths
+    original = r"c:\Users\rishi\Documents\GitHub\-TeamId-_RRR_ACMNexus26\assets\videos\Race Highlights  2026 Australian Grand Prix - FORMULA 1 (720p, h264, youtube).mp4"
+    pirated = r"c:\Users\rishi\Documents\GitHub\-TeamId-_RRR_ACMNexus26\assets\videos\pirated\Race Highlights  2026 Australian Grand Prix - FORMULA 1 (720p, h264, youtube)_240p.mp4"
+    
+    if os.path.exists(original) and os.path.exists(pirated):
+        # Test dual-mode detection
+        result = engine.detect_piracy(pirated, original, mode='dual')
+        
+        print(f"\n📊 DETAILED RESULTS:")
+        print(f"  Video-only: {result['video_confidence']:.2f}%")
+        print(f"  Audio-only: {result['audio_confidence']:.2f}%")
+        print(f"  Dual-mode: {result['combined_confidence']:.2f}%")
+        print(f"  Detection: {'✓ MATCH' if result['is_match'] else '✗ NO MATCH'}")
+    else:
+        print("⚠ Test videos not found")

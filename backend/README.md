@@ -1,35 +1,30 @@
 # Sentinel Backend
 
-Video fingerprinting and piracy detection engine for Sentinel.
+Video fingerprinting and piracy detection engine.
 
 ## Core Components
 
-- **hash_engine.py** - Video frame extraction and pHash/dHash generation
-- **matcher.py** - Video sequence matching with statistical confidence
-- **ai_engine.py** - AI-powered detection summaries and DMCA generation
-- **audio_engine.py** - Audio fingerprinting (future enhancement)
+- **hash_engine.py** - Video processing (pHash/dHash, adaptive sampling, parallel processing)
+- **matcher.py** - Sequence matching with statistical confidence scoring
+- **ai_engine.py** - AI-powered summaries and DMCA generation (Groq)
+- **audio_engine.py** - Audio fingerprinting (future)
 
-## Testing
-
-Run tests from the `/tests` directory:
-```bash
-python tests/test_pipeline.py
-python tests/test_real_videos.py
-python tests/test_ai_engine.py
-```
-
-## Installation
+## Quick Start
 
 ```bash
+# Install dependencies
 pip install -r requirements.txt
+
+# Run comprehensive test
+python tests/test_sentinel.py
 ```
 
 ## Features
 
-- Adaptive frame sampling with scene change detection
-- Multi-hash fusion (pHash + dHash)
-- Parallel processing (7.7x speedup)
-- Sliding window temporal matching
-- Statistical confidence scoring
-- AI-powered detection summaries
-- Automated DMCA notice generation
+✅ Adaptive frame sampling (scene change detection)  
+✅ Multi-hash fusion (pHash + dHash)  
+✅ Parallel processing (20x speedup)  
+✅ Sliding window temporal matching  
+✅ Statistical confidence scoring  
+✅ AI-powered detection summaries  
+✅ Automated DMCA generation

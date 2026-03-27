@@ -1,6 +1,6 @@
 """
-Real-world video testing for Sentinel pipeline.
-Tests with actual Formula 1 video and pirated versions.
+Sentinel Video Pipeline - Comprehensive Test Suite
+Tests all features with real Formula 1 video and pirated versions.
 """
 
 import os
