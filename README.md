@@ -23,29 +23,16 @@ A **16-hour hackathon** across various domains where innovation meets execution.
 
 ```md
 ### 🏷️ Project Name:
-<<<<<<< Updated upstream
-<Sentinel>
-
-### 🎯 Chosen Domain:
-<Digital Asset Protection>
-
-### ❗ Problem Statement:
-<Sports media content is widely reused across platforms without authorization, and there is no scalable way to track where and how it propagates>
-
-### 💡 Solution:
-<Built a system that generates fingerprints from sports media and matches them across distributed content to identify reuse and track propagation patterns.>
-=======
 Sentinel
 
 ### 🎯 Chosen Domain:
 Digital Asset Protection
 
 ### ❗ Problem Statement:
-Live sports piracy causes $28B in annual losses. Current DMCA takedown mechanisms take 4-6 hours from detection to enforcement, rendering them ineffective for time-sensitive live events.
+Live sports piracy causes $28B in annual losses. Sports media content is widely reused across platforms without authorization, and there is no scalable way to track where and how it propagates during live events.
 
 ### 💡 Solution:
-Sentinel is a real-time, multi-modal content fingerprinting engine that collapses the enforcement window to under 90 seconds. It uses adaptive perceptual hashing (pHash + dHash) and parallel processing to identify pirated streams during live events and generate automated DMCA notices.
->>>>>>> Stashed changes
+Sentinel is a real-time, multi-modal content fingerprinting engine that collapses the enforcement window to under 90 seconds. It uses adaptive perceptual hashing (pHash + dHash) and parallel processing to identify pirated streams during live events and generate automated DMCA notices with AI-enhanced insights.
 ```
 
 ---

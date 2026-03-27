@@ -1,3 +1,7 @@
+# Ignore environment variables
+.env
+.env.*
+
 # Ignore video files
 *.mp4
 *.mkv
