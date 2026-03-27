@@ -24,13 +24,26 @@ def generate_pirated_copy_cv2(input_path, output_dir):
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
+    # 1. Low Resolution (240p)
+    low_res_path = os.path.join(output_dir, f"{base_name}_240p.mp4")
+    out_low = cv2.VideoWriter(low_res_path, fourcc, fps, (int(width * (240/height)), 240))
+
+    # 2. Cropped (4:3)
+    cropped_path = os.path.join(output_dir, f"{base_name}_cropped.mp4")
+    crop_w = int(height * 4/3)
+    if crop_w % 2 != 0: crop_w += 1 # Ensure even dimension
+    start_x = (width - crop_w) // 2
+    out_crop = cv2.VideoWriter(cropped_path, fourcc, fps, (crop_w, height))
+
     # 3. Color Shift (Brightness/Contrast)
     color_shift_path = os.path.join(output_dir, f"{base_name}_colorshift.mp4")
     out_color = cv2.VideoWriter(color_shift_path, fourcc, fps, (width, height))
 
     # 4. Extreme (240p + Crop + Color Shift)
     extreme_path = os.path.join(output_dir, f"{base_name}_extreme.mp4")
-    out_extreme = cv2.VideoWriter(extreme_path, fourcc, fps, (crop_w, 240))
+    ext_w = int(crop_w * (240/height))
+    if ext_w % 2 != 0: ext_w += 1 # Ensure even dimension
+    out_extreme = cv2.VideoWriter(extreme_path, fourcc, fps, (ext_w, 240))
 
     print(f"--- Processing Video with OpenCV (All Piracy Types) ---")
     frame_count = 0
@@ -56,7 +69,7 @@ def generate_pirated_copy_cv2(input_path, output_dir):
         # 4. Extreme
         # Resize the cropped frame down to 240p tall, then apply color shift
         if start_x >= 0:
-            ext_frame = cv2.resize(crop_frame, (int(crop_w * (240/height)), 240))
+            ext_frame = cv2.resize(crop_frame, (ext_w, 240))
             ext_frame = cv2.convertScaleAbs(ext_frame, alpha=1.3, beta=40)
             out_extreme.write(ext_frame)
 
