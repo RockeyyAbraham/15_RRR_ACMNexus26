@@ -48,12 +48,12 @@ class DualModeEngine:
         
         # Initialize matcher
         matcher_params = matcher_config or {
-            'threshold': 85.0,
+            'threshold': 90.0,
             'consistency_threshold': 0.8
         }
         self.matcher = VideoMatcher(**matcher_params)
         self._local_cache = {}
-        self.degraded_threshold = 74.0
+        self.degraded_threshold = 90.0
 
     @staticmethod
     def _cache_key(video_path: str, mode: str) -> str:
