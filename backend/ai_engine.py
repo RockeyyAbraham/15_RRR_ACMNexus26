@@ -31,7 +31,7 @@ class SentinelAI:
             )
         
         self.client = Groq(api_key=self.api_key)
-        self.model = "llama-3.1-70b-versatile"  # Fast, capable model
+        self.model = "llama-3.3-70b-versatile"  # Updated to latest stable model
     
     def generate_detection_summary(self, detection_data: Dict) -> str:
         """
