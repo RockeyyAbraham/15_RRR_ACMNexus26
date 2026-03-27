@@ -284,7 +284,17 @@ def test_dual_engine_primary():
         ("240p.mp4", "240p Compression"),
         ("colorshift.mp4", "Color Shifted"),
         ("cropped.mp4", "Cropped"),
-        ("extreme.mp4", "Extreme Degradation (240p + Crop + Filter)")
+        ("extreme.mp4", "Extreme Degradation (240p + Crop + Filter)"),
+        # Additional piracy types for broader coverage
+        ("speedup.mp4", "Speed Change (2x Fast)"),
+        ("slowmo.mp4", "Speed Change (0.5x Slow)"),
+        ("watermark.mp4", "Watermark/Overlay"),
+        ("mirror.mp4", "Mirror/Horizontal Flip"),
+        ("rotate.mp4", "Rotation (90°)"),
+        ("stretch.mp4", "Aspect Ratio Stretch"),
+        ("shortclip.mp4", "Temporal Edit (30s Clip)"),
+        ("reordered.mp4", "Temporal Reorder"),
+        ("mashup.mp4", "Multi-Source Mashup")
     ]
 
     engine = DualModeEngine()
@@ -312,13 +322,18 @@ def test_dual_engine_primary():
             'video_confidence': dual_result.get('video_confidence', 0.0),
             'audio_confidence': dual_result.get('audio_confidence', 0.0),
             'consistency': None,
-            'is_detected': dual_result.get('is_match', False)
+            'is_detected': dual_result.get('is_match', False),
+            'pattern_score': dual_result.get('pattern_score', 0.0),
+            'adaptive_threshold': dual_result.get('adaptive_threshold', 90.0),
+            'decision_reason': dual_result.get('decision_reason', 'unknown')
         })
 
         print(
             f"  Video: {dual_result.get('video_confidence', 0.0):.2f}% | "
             f"Audio: {dual_result.get('audio_confidence', 0.0):.2f}% | "
-            f"Combined: {dual_result.get('combined_confidence', 0.0):.2f}%"
+            f"Pattern: {dual_result.get('pattern_score', 0.0):.2f}% | "
+            f"Threshold: {dual_result.get('adaptive_threshold', 90.0):.2f}% | "
+            f"Reason: {dual_result.get('decision_reason', 'unknown')}"
         )
 
     return results
