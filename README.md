@@ -23,16 +23,16 @@ A **16-hour hackathon** across various domains where innovation meets execution.
 
 ```md
 ### 🏷️ Project Name:
-<Your Project Name>
+<Sentinel>
 
 ### 🎯 Chosen Domain:
-<One from the given domains>
+<Digital Asset Protection>
 
 ### ❗ Problem Statement:
-<What problem are you solving?>
+<Sports media content is widely reused across platforms without authorization, and there is no scalable way to track where and how it propagates>
 
 ### 💡 Solution:
-<How does your project solve the problem?>
+<Built a system that generates fingerprints from sports media and matches them across distributed content to identify reuse and track propagation patterns.>
 ```
 
 ---
