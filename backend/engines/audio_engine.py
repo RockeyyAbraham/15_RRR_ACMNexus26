@@ -73,6 +73,34 @@ class AudioHashEngine:
             print(f"❌ Audio extraction failed: {e}")
             return None
 
+    def _generate_audio_hash(self, audio_data: np.ndarray, sample_rate: int) -> str:
+        """Generate perceptual hash from audio spectrogram."""
+        try:
+            # Create mel-spectrogram
+            spec = librosa.feature.melspectrogram(
+                y=audio_data, 
+                sr=sample_rate, 
+                n_mels=self.n_mels
+            )
+            
+            # Convert to decibels
+            spec_db = librosa.power_to_db(spec, ref=np.max)
+            
+            # Normalize to 0-255 range
+            spec_norm = ((spec_db - spec_db.min()) / (spec_db.max() - spec_db.min()) * 255).astype(np.uint8)
+            
+            # Convert to PIL Image
+            img = Image.fromarray(spec_norm)
+            
+            # Generate pHash from the spectrogram image
+            audio_hash = imagehash.phash(img, hash_size=self.hash_size)
+            
+            return str(audio_hash)
+            
+        except Exception as e:
+            print(f"❌ Audio hash generation failed: {e}")
+            return None
+
     def _extract_audio_temp(self, video_path: str) -> str:
         """Extract audio to temporary WAV file using ffmpeg."""
         try:
