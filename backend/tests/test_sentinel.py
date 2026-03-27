@@ -269,66 +269,270 @@ def generate_report(original_meta, detection_results):
     print(f"\n" + "=" * 80)
 
 
+def get_available_videos(video_dir: str):
+    """Scan directory for available protected videos."""
+    videos = []
+    for f in os.listdir(video_dir):
+        if f.endswith('.mp4') and os.path.isfile(os.path.join(video_dir, f)):
+            videos.append(f)
+    return sorted(videos)
+
+def select_video_interactive(videos):
+    """Prompt user to select a video."""
+    if not videos:
+        return None
+    if len(videos) == 1:
+        return videos[0]
+    
+    print("\n" + "="*60)
+    print("  SENTINEL VIDEO SELECTION MENU")
+    print("="*60)
+    for i, v in enumerate(videos, 1):
+        print(f"  {i}. {v[:60]}...")
+    print("="*60)
+    
+    try:
+        choice = input(f"\n  Select video (1-{len(videos)}): ")
+        idx = int(choice) - 1
+        if 0 <= idx < len(videos):
+            return videos[idx]
+    except (ValueError, EOFError):
+        pass
+        
+    print(f"  Defaulting to: {videos[0]}")
+    return videos[0]
+
+def generate_missing_variants(original_path, pirated_dir):
+    """Generate missing pirated variants using OpenCV."""
+    import cv2
+    
+    base_name = os.path.splitext(os.path.basename(original_path))[0]
+    
+    # Check which variants exist
+    existing_variants = set()
+    if os.path.exists(pirated_dir):
+        for f in os.listdir(pirated_dir):
+            if f.endswith('.mp4'):
+                existing_variants.add(f)
+    
+    # Required variants
+    required_variants = [
+        ("240p.mp4", "240p Compression"),
+        ("colorshift.mp4", "Color Shifted"),
+        ("cropped.mp4", "Cropped"),
+        ("extreme.mp4", "Extreme Degradation"),
+        ("letterbox.mp4", "Letterboxed"),
+        ("mirrored.mp4", "Mirrored"),
+        ("rotate.mp4", "Rotation"),
+        ("stretch.mp4", "Aspect Ratio Stretch"),
+        ("watermark.mp4", "Watermark")
+    ]
+    
+    missing_variants = [v for v in required_variants if v[0] not in existing_variants]
+    
+    if not missing_variants:
+        print(f"✓ All {len(required_variants)} variants already exist")
+        return
+    
+    print(f"\n{'='*60}")
+    print(f"GENERATING {len(missing_variants)} MISSING VARIANTS")
+    print(f"{'='*60}")
+    
+    os.makedirs(pirated_dir, exist_ok=True)
+    
+    # Generate each missing variant
+    for variant_file, description in missing_variants:
+        output_path = os.path.join(pirated_dir, variant_file)
+        print(f"\n→ Generating {description}...")
+        
+        try:
+            if variant_file == "watermark.mp4":
+                generate_watermark_variant(original_path, output_path)
+            elif variant_file == "rotate.mp4":
+                generate_rotate_variant(original_path, output_path)
+            elif variant_file == "stretch.mp4":
+                generate_stretch_variant(original_path, output_path)
+            else:
+                print(f"  ⚠ Skipping {description} (complex transformation)")
+                continue
+                
+            print(f"  ✓ Created: {variant_file}")
+            
+        except Exception as e:
+            print(f"  ✗ Failed to generate {description}: {e}")
+
+def generate_watermark_variant(input_path, output_path):
+    """Generate watermark variant using OpenCV."""
+    import cv2
+    
+    cap = cv2.VideoCapture(input_path)
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    
+    frame_count = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret or frame_count > 300:  # Limit to ~10 seconds
+            break
+        
+        # Add watermark
+        cv2.putText(frame, "PIRACY COPY", (50, height - 50), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
+        out.write(frame)
+        frame_count += 1
+    
+    cap.release()
+    out.release()
+
+def generate_rotate_variant(input_path, output_path):
+    """Generate 90-degree rotated variant."""
+    import cv2
+    
+    cap = cv2.VideoCapture(input_path)
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (height, width))
+    
+    frame_count = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret or frame_count > 300:
+            break
+        
+        rotated = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+        out.write(rotated)
+        frame_count += 1
+    
+    cap.release()
+    out.release()
+
+def generate_stretch_variant(input_path, output_path):
+    """Generate aspect ratio stretched variant."""
+    import cv2
+    
+    cap = cv2.VideoCapture(input_path)
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    # Calculate 4:3 dimensions
+    new_width = int(original_height * 4/3)
+    new_height = original_height
+    
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (new_width, new_height))
+    
+    frame_count = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret or frame_count > 300:
+            break
+        
+        stretched = cv2.resize(frame, (new_width, new_height))
+        out.write(stretched)
+        frame_count += 1
+    
+    cap.release()
+    out.release()
+
 def test_dual_engine_primary():
     """Primary hackathon test: dual-mode (video+audio) engine."""
     print("\n" + "=" * 80)
     print("TEST 1: Dual-Mode Engine (PRIMARY)")
     print("=" * 80)
 
-    original = r"c:\Users\rishi\Documents\GitHub\-TeamId-_RRR_ACMNexus26\assets\videos\Race Highlights  2026 Australian Grand Prix - FORMULA 1 (720p, h264, youtube).mp4"
-    pirated_dir = r"c:\Users\rishi\Documents\GitHub\-TeamId-_RRR_ACMNexus26\assets\videos\pirated"
-
-    if not os.path.exists(original):
-        print(f"✗ Original video not found: {original}")
+    # Step 1: Get available videos
+    video_dir = r"c:\Users\rishi\Documents\GitHub\-TeamId-_RRR_ACMNexus26\assets\videos"
+    available_videos = get_available_videos(video_dir)
+    
+    if not available_videos:
+        print("✗ No protected videos found")
         return []
+    
+    # Step 2: User selection
+    selected_video = select_video_interactive(available_videos)
+    if not selected_video:
+        return []
+    
+    original_path = os.path.join(video_dir, selected_video)
+    
+    # Step 3: Determine pirated folder
+    base_name = os.path.splitext(selected_video)[0].replace(" ", "_").replace(":", "").replace("-", "_")
+    pirated_dir = os.path.join(video_dir, "pirated", base_name)
+    
+    # Step 4: Generate missing variants
+    generate_missing_variants(original_path, pirated_dir)
+    
+    # Step 5: Run tests
+    engine = DualModeEngine()
+    results = []
 
     pirated_videos = [
         ("240p.mp4", "240p Compression"),
         ("colorshift.mp4", "Color Shifted"),
         ("cropped.mp4", "Cropped"),
-        ("extreme.mp4", "Extreme Degradation (240p + Crop + Filter)"),
-        ("letterbox.mp4", "Letterboxed (Anti-Crop Test)"),
-        ("mirrored.mp4", "Mirrored (Anti-Flip Test)")
+        ("extreme.mp4", "Extreme Degradation"),
+        ("letterbox.mp4", "Letterboxed"),
+        ("mirrored.mp4", "Mirrored"),
+        ("rotate.mp4", "Rotation"),
+        ("stretch.mp4", "Aspect Ratio Stretch"),
+        ("watermark.mp4", "Watermark")
     ]
 
-    engine = DualModeEngine()
-    results = []
-
     for filename, description in pirated_videos:
-        suspect_path = os.path.join(
-            pirated_dir,
-            f"Race Highlights  2026 Australian Grand Prix - FORMULA 1 (720p, h264, youtube)_{filename}"
-        )
+        suspect_path = os.path.join(pirated_dir, filename)
 
         if not os.path.exists(suspect_path):
-            print(f"\n⚠ Missing test file: {suspect_path}")
+            print(f"\n⚠ Missing variant: {filename}")
             continue
 
-        print(f"\n{'─' * 80}")
-        print(f"Dual test: {description}")
-        print(f"{'─' * 80}")
+        print(f"\n{'─' * 60}")
+        print(f"Testing: {description}")
+        print(f"{'─' * 60}")
 
-        dual_result = engine.detect_piracy(suspect_path, original, mode='dual')
+        try:
+            dual_result = engine.detect_piracy(suspect_path, original_path, mode='dual')
 
-        results.append({
-            'description': description,
-            'combined_confidence': dual_result.get('combined_confidence', 0.0),
-            'video_confidence': dual_result.get('video_confidence', 0.0),
-            'audio_confidence': dual_result.get('audio_confidence', 0.0),
-            'consistency': None,
-            'is_detected': dual_result.get('is_match', False),
-            'pattern_score': dual_result.get('pattern_score', 0.0),
-            'adaptive_threshold': dual_result.get('adaptive_threshold', 90.0),
-            'decision_reason': dual_result.get('decision_reason', 'unknown')
-        })
+            results.append({
+                'description': description,
+                'combined_confidence': dual_result.get('combined_confidence', 0.0),
+                'video_confidence': dual_result.get('video_confidence', 0.0),
+                'audio_confidence': dual_result.get('audio_confidence', 0.0),
+                'consistency': None,
+                'is_detected': dual_result.get('is_match', False),
+                'pattern_score': dual_result.get('pattern_score', 0.0),
+                'adaptive_threshold': dual_result.get('adaptive_threshold', 90.0),
+                'decision_reason': dual_result.get('decision_reason', 'unknown')
+            })
 
-        print(
-            f"  Video: {dual_result.get('video_confidence', 0.0):.2f}% | "
-            f"Audio: {dual_result.get('audio_confidence', 0.0):.2f}% | "
-            f"Pattern: {dual_result.get('pattern_score', 0.0):.2f}% | "
-            f"Threshold: {dual_result.get('adaptive_threshold', 90.0):.2f}% | "
-            f"Reason: {dual_result.get('decision_reason', 'unknown')}"
-        )
+            print(
+                f"  Video: {dual_result.get('video_confidence', 0.0):.2f}% | "
+                f"Audio: {dual_result.get('audio_confidence', 0.0):.2f}% | "
+                f"Pattern: {dual_result.get('pattern_score', 0.0):.2f}% | "
+                f"Threshold: {dual_result.get('adaptive_threshold', 90.0):.2f}% | "
+                f"Reason: {dual_result.get('decision_reason', 'unknown')}"
+            )
+
+        except Exception as e:
+            print(f"  ✗ ERROR: {e}")
+            results.append({
+                'description': description,
+                'combined_confidence': 0.0,
+                'video_confidence': 0.0,
+                'audio_confidence': 0.0,
+                'consistency': None,
+                'is_detected': False,
+                'pattern_score': 0.0,
+                'adaptive_threshold': 90.0,
+                'decision_reason': 'error'
+            })
 
     return results
 
@@ -337,7 +541,7 @@ def main():
     """Run complete real-world video test suite."""
     print("\n" + "=" * 80)
     print("SENTINEL REAL-WORLD TEST SUITE (DUAL ENGINE PRIMARY)")
-    print("Testing with Formula 1 - 2026 Australian Grand Prix")
+    print("Interactive video selection and automatic variant generation")
     print("=" * 80)
     
     try:
