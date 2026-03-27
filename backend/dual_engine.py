@@ -8,6 +8,7 @@ import sys
 from hash_engine import VideoHashEngine
 from audio_engine import AudioHashEngine
 from matcher import VideoMatcher
+from redis_utils import redis_manager
 
 
 class DualModeEngine:
@@ -50,6 +51,12 @@ class DualModeEngine:
             'consistency_threshold': 0.8
         }
         self.matcher = VideoMatcher(**matcher_params)
+
+    @staticmethod
+    def _cache_key(video_path: str, mode: str) -> str:
+        """Build a stable cache key from path, mtime and mode."""
+        stat = os.stat(video_path)
+        return f"engine:{mode}:{video_path}:{int(stat.st_mtime)}:{stat.st_size}"
     
     def process_video(self, video_path: str, mode: str = 'dual') -> dict:
         """
@@ -70,6 +77,12 @@ class DualModeEngine:
             'video_metadata': None,
             'audio_metadata': None
         }
+
+        cache_key = self._cache_key(video_path, mode)
+        cached = redis_manager.get_cache(cache_key)
+        if cached:
+            print(f"  ✓ Cache hit: {os.path.basename(video_path)} ({mode})")
+            return cached
         
         if mode in ['video', 'dual']:
             print(f"  Processing video fingerprints...")
@@ -80,6 +93,8 @@ class DualModeEngine:
             print(f"  Processing audio fingerprints...")
             result['audio_hashes'], result['audio_metadata'] = self.audio_engine.hash_audio(video_path)
             print(f"  ✓ Audio: {len(result['audio_hashes'])} hashes")
+
+        redis_manager.set_cache(cache_key, result, ttl=3600)
         
         return result
     
@@ -142,11 +157,22 @@ class DualModeEngine:
         
         # Combined decision
         if mode == 'dual':
-            # Weighted average (video 60%, audio 40%)
-            result['combined_confidence'] = (
-                result['video_confidence'] * 0.6 + 
-                result['audio_confidence'] * 0.4
-            )
+            # Weighted average with graceful fallback when one modality is unavailable
+            video_available = suspect.get('video_hashes') and protected.get('video_hashes')
+            audio_available = suspect.get('audio_hashes') and protected.get('audio_hashes')
+
+            if video_available and audio_available:
+                result['combined_confidence'] = (
+                    result['video_confidence'] * 0.6 +
+                    result['audio_confidence'] * 0.4
+                )
+            elif video_available:
+                result['combined_confidence'] = result['video_confidence']
+            elif audio_available:
+                result['combined_confidence'] = result['audio_confidence']
+            else:
+                result['combined_confidence'] = 0.0
+
             result['is_match'] = result['combined_confidence'] >= self.matcher.threshold
             print(f"  Combined confidence: {result['combined_confidence']:.2f}%")
         elif mode == 'video':
@@ -162,6 +188,11 @@ class DualModeEngine:
         else:
             print(f"✅ NO MATCH - {result['combined_confidence']:.2f}% confidence")
         print(f"{'='*80}")
+
+        # Cache detection result for dashboard/API reads
+        detection_id = abs(hash((suspect_path, protected_path, mode))) % 10_000_000
+        result['detection_id'] = detection_id
+        redis_manager.cache_detection_result(detection_id, result, ttl=1800)
         
         return result
 

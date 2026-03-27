@@ -4,6 +4,7 @@ import imagehash
 from PIL import Image
 import os
 import time
+from typing import Dict, List, Tuple
 
 class AudioHashEngine:
     """
@@ -70,7 +71,7 @@ class AudioHashEngine:
             print(f"❌ Audio extraction failed: {e}")
             return None
 
-    def hash_audio(self, video_path: str) -> tuple:
+    def hash_audio(self, video_path: str) -> Tuple[List[str], Dict]:
         """
         Generate audio fingerprints for entire video.
         Returns list of hashes and metadata.
@@ -134,13 +135,27 @@ class AudioHashEngine:
                 'chunk_duration': self.chunk_duration,
                 'processing_time_seconds': processing_time,
                 'sample_rate': self.sample_rate,
-                'n_mels': self.n_mels
+                'n_mels': self.n_mels,
+                'audio_backend_available': True,
+                'error': None
             }
             
             return hashes, metadata
             
         except Exception as e:
-            raise Exception(f"Audio processing failed: {e}")
+            processing_time = time.time() - start_time
+            metadata = {
+                'total_duration': 0.0,
+                'chunks_processed': 0,
+                'chunk_duration': self.chunk_duration,
+                'processing_time_seconds': processing_time,
+                'sample_rate': self.sample_rate,
+                'n_mels': self.n_mels,
+                'audio_backend_available': False,
+                'error': str(e)
+            }
+            print(f"⚠ Audio processing unavailable for {os.path.basename(video_path)}: {e}")
+            return [], metadata
 
 if __name__ == "__main__":
     # Quick Test

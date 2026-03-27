@@ -4,6 +4,7 @@ Connecting Video pHash Hashing, Groq AI Summaries, and DMCA PDF Generation.
 """
 
 from flask import Flask, request, jsonify, send_file
+from redis_utils import redis_manager
 # import os, json, etc.
 # from flask_sock import Sock  # For WebSocket support (optional, recommended)
 
@@ -62,7 +63,13 @@ def generate_dmca(detection_id):
 @app.route('/health', methods=['GET'])
 def health_check():
     """System health check for monitor status."""
-    return jsonify({"status": "online", "engines": ["hashing", "ai", "generator"]})
+    return jsonify({
+        "status": "online",
+        "engines": ["hashing", "ai", "generator"],
+        "redis": {
+            "available": redis_manager.is_available()
+        }
+    })
 
 # --- WEBSOCKETS (Requires flask-sock) ---
 # @sock.route('/live')
