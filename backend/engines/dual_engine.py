@@ -58,8 +58,8 @@ class DualModeEngine:
         self.degraded_threshold = 90.0
         
         # Detection logic parameters (tuned for perceptual robustness)
-        self.bias = -45.0
-        self.video_weight = 1.1
+        self.bias = -50.0
+        self.video_weight = 1.2
         self.audio_weight = 0.4
         self.sigmoid_steepness = 0.08
 
