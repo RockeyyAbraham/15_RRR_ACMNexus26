@@ -102,14 +102,33 @@ class VideoMatcher:
         # Strip mirror info from suspect if present (for symmetry)
         h1_str = hash1.split('m')[0] if 'm' in hash1 else hash1
         
-        h1 = imagehash.hex_to_hash(h1_str)
-        h2 = imagehash.hex_to_hash(hash2)
-        
-        distance = h1 - h2
-        similarity = (1 - (distance / self.max_distance)) * 100
-        is_match = similarity >= self.threshold
-        
-        return is_match, similarity
+        try:
+            # Try imagehash format (video hashes)
+            h1 = imagehash.hex_to_hash(h1_str)
+            h2 = imagehash.hex_to_hash(hash2)
+            
+            distance = h1 - h2
+            similarity = (1 - (distance / self.max_distance)) * 100
+            return True, similarity
+            
+        except (ValueError, TypeError) as e:
+            # Handle non-imagehash formats (audio hashes)
+            try:
+                # For audio hashes, use string similarity
+                if len(h1_str) != len(hash2):
+                    # Different lengths - normalize
+                    min_len = min(len(h1_str), len(hash2))
+                    h1_str = h1_str[:min_len]
+                    hash2 = hash2[:min_len]
+                
+                # Simple character-by-character similarity
+                matches = sum(c1 == c2 for c1, c2 in zip(h1_str, hash2))
+                similarity = (matches / len(h1_str)) * 100
+                return True, similarity
+                
+            except Exception as e2:
+                print(f"Hash comparison failed: {e2}")
+                return False, 0.0
     
     def match_video_sequences(self, suspect_hashes: List[str], protected_hashes: List[str], 
                               use_sliding_window: bool = False) -> Dict:
