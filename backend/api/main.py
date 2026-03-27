@@ -1,20 +1,25 @@
 """
 Sentinel Backend Central Hub - Flask REST & WebSocket API.
-Connecting Video pHash Hashing, Groq AI Summaries, and DMCA PDF Generation.
+Provides high-fidelity piracy detection, AI summaries, and automated DMCA generation.
 """
 
 import os
 import json
 import sqlite3
 from datetime import datetime
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
 from flask_sock import Sock
+from werkzeug.utils import secure_filename
 
-# Import module classes
+# Engine Imports
 from engines.hash_engine import VideoHashEngine
-from engines.matcher import VideoMatcher
-from engines.ai_engine import SentinelAI
 from engines.audio_engine import AudioHashEngine
+from engines.matcher import VideoMatcher
+from engines.dual_engine import DualModeEngine
+from engines.ai_engine import SentinelAI
 from generators.dmca_generator import DMCAGenerator
 from utils.redis_utils import redis_manager
 
@@ -31,8 +36,7 @@ generator = DMCAGenerator(output_dir="../notices")
 # Ensure notices directory exists
 os.makedirs("../notices", exist_ok=True)
 
-
-# Database setup
+# --- Database Setup ---
 def init_db():
     """Initialize SQLite database with required tables."""
     conn = sqlite3.connect("../data/sentinel.db")
@@ -64,18 +68,45 @@ def init_db():
     conn.close()
 
 
-# Initialize database on startup
 init_db()
 
-# --- ROUTES ---
+@contextlib.contextmanager
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
 
+def error_response(message: str, status_code: int = 500):
+    return jsonify({"error": message, "timestamp": datetime.now().isoformat()}), status_code
+
+# --- REST Endpoints ---
+
+@app.route("/health", methods=["GET"])
+def health_check():
+    try:
+        with get_db() as db:
+            p_count = db.execute("SELECT COUNT(*) FROM protected_content").fetchone()[0]
+            d_count = db.execute("SELECT COUNT(*) FROM detections").fetchone()[0]
+            
+        return jsonify({
+            "status": "online",
+            "engines": ["hashing", "matching", "ai", "generator", "redis"],
+            "redis_available": redis_manager.is_available(),
+            "protected_content_count": p_count,
+            "detection_count": d_count,
+            "timestamp": datetime.now().isoformat()
+        }), 200
+    except Exception as e:
+        return error_response(f"Health check failed: {str(e)}")
 
 @app.route("/upload/protected", methods=["POST"])
 def upload_protected():
-    """Endpoint for rights-holders to upload reference footage."""
     if "video" not in request.files:
-        return jsonify({"error": "No video file provided"}), 400
-
+        return error_response("No video file included", 400)
+    
     video_file = request.files["video"]
     if video_file.filename == "":
         return jsonify({"error": "No selected file"}), 400
@@ -84,7 +115,7 @@ def upload_protected():
     video_path = f"temp/{video_file.filename}"
     os.makedirs("temp", exist_ok=True)
     video_file.save(video_path)
-
+    
     try:
         # Extract pHashes using hash_engine
         video_hashes, video_metadata = hash_engine.hash_video(video_path)
@@ -133,15 +164,52 @@ def upload_protected():
         # Clean up temp file on error
         if os.path.exists(video_path):
             os.remove(video_path)
-        return jsonify({"error": str(e)}), 500
 
+@app.route("/protected", methods=["GET"])
+def list_protected():
+    with get_db() as db:
+        rows = db.execute("SELECT id, title, league, duration_seconds, video_hashes, uploaded_at FROM protected_content").fetchall()
+        
+    result = []
+    for row in rows:
+        v_hashes = json.loads(row['video_hashes'])
+        result.append({
+            "id": row['id'],
+            "title": row['title'],
+            "league": row['league'],
+            "duration_seconds": row['duration_seconds'],
+            "hash_count": len(v_hashes),
+            "uploaded_at": row['uploaded_at']
+        })
+    return jsonify(result)
+
+@app.route("/protected/<int:content_id>", methods=["DELETE"])
+def delete_protected(content_id):
+    try:
+        with get_db() as db:
+            # Check detection count first for response message
+            d_count = db.execute("SELECT COUNT(*) FROM detections WHERE protected_content_id = ?", (content_id,)).fetchone()[0]
+            db.execute("DELETE FROM detections WHERE protected_content_id = ?", (content_id,))
+            db.execute("DELETE FROM protected_content WHERE id = ?", (content_id,))
+            db.commit()
+            
+        # Clear Redis cache
+        if redis_manager.client:
+            redis_manager.client.delete(f"protected_hashes:{content_id}")
+            redis_manager.client.srem("active_protected_content", content_id)
+            
+        return jsonify({"message": f"Deleted content_id {content_id} and {d_count} associated detections"})
+    except Exception as e:
+        return error_response(str(e))
 
 @app.route("/upload/suspect", methods=["POST"])
 def upload_suspect():
-    """Endpoint for potential piracy streams."""
     if "video" not in request.files:
-        return jsonify({"error": "No video file provided"}), 400
-
+        return error_response("No suspect video provided", 400)
+    
+    mode = request.form.get("mode", "dual")
+    stream_url = request.form.get("stream_url", "unknown_source")
+    
     video_file = request.files["video"]
     if video_file.filename == "":
         return jsonify({"error": "No selected file"}), 400
@@ -150,7 +218,9 @@ def upload_suspect():
     video_path = f"temp/{video_file.filename}"
     os.makedirs("temp", exist_ok=True)
     video_file.save(video_path)
-
+    
+    start_time = time.time()
+    
     try:
         # Extract pHashes from suspect video
         suspect_hashes, suspect_metadata = hash_engine.hash_video(video_path)
@@ -304,28 +374,21 @@ def get_detections():
             SELECT d.id, p.title, p.league, d.stream_url, d.confidence_score, d.detected_at
             FROM detections d
             JOIN protected_content p ON d.protected_content_id = p.id
+            WHERE d.confidence_score >= ?
             ORDER BY d.detected_at DESC
-        """)
-        rows = cursor.fetchall()
-        conn.close()
-
-        detections = []
-        for row in rows:
-            detections.append(
-                {
-                    "id": row[0],
-                    "title": row[1],
-                    "league": row[2],
-                    "stream_url": row[3],
-                    "confidence_score": row[4],
-                    "detected_at": row[5],
-                }
-            )
-
-        return jsonify(detections), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+            LIMIT ? OFFSET ?
+        """, (min_conf, limit, offset)).fetchall()
+        
+    detections = []
+    for r in rows:
+        detections.append(dict(r))
+        
+    return jsonify({
+        "detections": detections,
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    })
 
 @app.route("/detections/<int:detection_id>/dmca", methods=["GET"])
 def generate_dmca(detection_id):
@@ -390,8 +453,7 @@ def generate_dmca(detection_id):
         )
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+        return error_response(str(e))
 
 @app.route("/health", methods=["GET"])
 def health_check():
@@ -413,12 +475,13 @@ def health_check():
 
 # --- WEBSOCKETS ---
 @sock.route("/live")
-def handle_live_detections(ws):
-    """Push real-time detection events to the Flutter dashboard."""
-    # Simple implementation: send current detections every 5 seconds
-    # In a production system, we would listen for database changes or use a queue
-    import time
-
+def handle_live(ws):
+    recent = redis_manager.get_latest_detections(10)
+    if recent:
+        ws.send(json.dumps({"type": "detections_update", "data": recent, "timestamp": datetime.now().isoformat()}))
+        
+    last_timestamp = datetime.now()
+    
     while True:
         try:
             conn = sqlite3.connect("../data/sentinel.db")
@@ -452,7 +515,5 @@ def handle_live_detections(ws):
             print(f"WebSocket error: {e}")
             break
 
-
 if __name__ == "__main__":
-    # Start the Flask development server on port 8000
-    app.run(debug=True, port=8000)
+    app.run(debug=True, port=8000, host='0.0.0.0')

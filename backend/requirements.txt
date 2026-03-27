@@ -9,3 +9,4 @@ groq
 librosa
 redis
 python-dotenv
+flask-cors
