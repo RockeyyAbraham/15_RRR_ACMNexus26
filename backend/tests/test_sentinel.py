@@ -403,15 +403,16 @@ def generate_missing_variants(original_path, pirated_dir):
 def generate_lowbitrate_variant(input_path, output_path):
     """Generate low bitrate audio variant using ffmpeg."""
     try:
+        ffmpeg_path = r"C:\Users\rishi\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
         cmd = [
-            'ffmpeg', '-i', input_path,
+            ffmpeg_path, '-i', input_path,
             '-c:a', 'aac', '-b:a', '64k',
             '-c:v', 'copy',  # Keep video unchanged
             '-y', output_path
         ]
         subprocess.run(cmd, check=True, capture_output=True)
     except Exception as e:
-        print(f"  ⚠ Low bitrate generation failed (ffmpeg needed): {e}")
+        print(f"  ⚠ Low bitrate generation failed: {e}")
 
 def generate_pitchshift_variant(input_path, output_path):
     """Generate pitch shifted variant using librosa."""
@@ -430,8 +431,9 @@ def generate_pitchshift_variant(input_path, output_path):
         sf.write(temp_audio, y_shifted, sr)
         
         # Merge with original video
+        ffmpeg_path = r"C:\Users\rishi\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
         cmd = [
-            'ffmpeg', '-i', input_path, '-i', temp_audio,
+            ffmpeg_path, '-i', input_path, '-i', temp_audio,
             '-c:v', 'copy', '-c:a', 'aac',
             '-map', '0:v:0', '-map', '1:a:0',
             '-y', output_path
@@ -447,8 +449,9 @@ def generate_pitchshift_variant(input_path, output_path):
 def generate_speed_audio_variant(input_path, output_path):
     """Generate speed changed audio variant using ffmpeg."""
     try:
+        ffmpeg_path = r"C:\Users\rishi\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
         cmd = [
-            'ffmpeg', '-i', input_path,
+            ffmpeg_path, '-i', input_path,
             '-filter:a', 'atempo=1.5',  # 1.5x speed
             '-c:v', 'copy',
             '-y', output_path
@@ -460,8 +463,9 @@ def generate_speed_audio_variant(input_path, output_path):
 def generate_mono_variant(input_path, output_path):
     """Generate mono audio variant using ffmpeg."""
     try:
+        ffmpeg_path = r"C:\Users\rishi\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
         cmd = [
-            'ffmpeg', '-i', input_path,
+            ffmpeg_path, '-i', input_path,
             '-ac', '1',  # Convert to mono
             '-c:v', 'copy',
             '-y', output_path
@@ -473,8 +477,9 @@ def generate_mono_variant(input_path, output_path):
 def generate_equalized_variant(input_path, output_path):
     """Generate equalized (bass boost) variant using ffmpeg."""
     try:
+        ffmpeg_path = r"C:\Users\rishi\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
         cmd = [
-            'ffmpeg', '-i', input_path,
+            ffmpeg_path, '-i', input_path,
             '-filter:a', 'equalizer=f=100:width_type=h:width=100:g=10',  # Bass boost
             '-c:v', 'copy',
             '-y', output_path
@@ -486,8 +491,9 @@ def generate_equalized_variant(input_path, output_path):
 def generate_trimmed_variant(input_path, output_path):
     """Generate trimmed (30 second) variant using ffmpeg."""
     try:
+        ffmpeg_path = r"C:\Users\rishi\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
         cmd = [
-            'ffmpeg', '-i', input_path,
+            ffmpeg_path, '-i', input_path,
             '-t', '30',  # First 30 seconds
             '-c', 'copy',
             '-y', output_path
@@ -499,9 +505,10 @@ def generate_trimmed_variant(input_path, output_path):
 def generate_noisy_variant(input_path, output_path):
     """Generate variant with background noise using ffmpeg."""
     try:
+        ffmpeg_path = r"C:\Users\rishi\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
         # Generate white noise and mix with original
         cmd = [
-            'ffmpeg', '-i', input_path,
+            ffmpeg_path, '-i', input_path,
             '-f', 'lavfi', '-i', 'anoisesrc=color=white:size=1024:duration=30',
             '-filter_complex', '[0:a][1:a]amix=inputs=2:weights=0.9 0.1',
             '-c:v', 'copy',
@@ -514,8 +521,9 @@ def generate_noisy_variant(input_path, output_path):
 def generate_phase_inverted_variant(input_path, output_path):
     """Generate phase inverted variant using ffmpeg."""
     try:
+        ffmpeg_path = r"C:\Users\rishi\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
         cmd = [
-            'ffmpeg', '-i', input_path,
+            ffmpeg_path, '-i', input_path,
             '-filter:a', 'aeval=val=-1',
             '-c:v', 'copy',
             '-y', output_path
