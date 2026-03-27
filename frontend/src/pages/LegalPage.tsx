@@ -10,9 +10,21 @@ const fallbackNotices = [
 export default function LegalPage() {
   return (
     <div className="space-y-6">
-      <div>
-        <div className="panel-title">Compliance Command</div>
-        <h1 className="panel-heading mt-3">Legal Enforcement</h1>
+      <div className="section-shell">
+        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="panel-title">Compliance Command</div>
+            <h1 className="panel-heading mt-3">Legal Enforcement</h1>
+            <div className="mt-3 max-w-2xl text-sm text-slate-300">
+              Queue notices for review, package infringement evidence, and move takedown actions through the Sentinel compliance lane.
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="data-chip">Review Gate</span>
+            <span className="data-chip">DMCA Queue</span>
+            <span className="data-chip">Audit Trail</span>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,2.5fr)_320px]">
