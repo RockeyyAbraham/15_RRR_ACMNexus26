@@ -11,11 +11,11 @@ from flask import Flask, request, jsonify, send_file
 from flask_sock import Sock
 
 # Import module classes
-from hash_engine import VideoHashEngine
-from matcher import VideoMatcher
-from ai_engine import SentinelAI
-from dmca_generator import DMCAGenerator
-from redis_utils import redis_manager
+from engines.hash_engine import VideoHashEngine
+from engines.matcher import VideoMatcher
+from engines.ai_engine import SentinelAI
+from generators.dmca_generator import DMCAGenerator
+from utils.redis_utils import redis_manager
 
 app = Flask(__name__)
 sock = Sock(app)  # Initialize WebSocket support
@@ -24,16 +24,16 @@ sock = Sock(app)  # Initialize WebSocket support
 hash_engine = VideoHashEngine(frame_sample_rate=10, hash_size=8)
 matcher = VideoMatcher(threshold=85.0, hash_size=8)
 ai_engine = SentinelAI()
-generator = DMCAGenerator(output_dir="notices")
+generator = DMCAGenerator(output_dir="../notices")
 
 # Ensure notices directory exists
-os.makedirs("notices", exist_ok=True)
+os.makedirs("../notices", exist_ok=True)
 
 
 # Database setup
 def init_db():
     """Initialize SQLite database with required tables."""
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect("../data/sentinel.db")
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS protected_content (
@@ -88,7 +88,7 @@ def upload_protected():
         hashes, metadata = hash_engine.hash_video(video_path)
 
         # Store in database
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect("../data/sentinel.db")
         cursor = conn.cursor()
         cursor.execute(
             """
@@ -153,7 +153,7 @@ def upload_suspect():
         protected_ids = redis_manager.get_all_protected_content_ids()
         if not protected_ids:
             # Fallback to database
-            conn = sqlite3.connect("sentinel.db")
+            conn = sqlite3.connect("../data/sentinel.db")
             cursor = conn.cursor()
             cursor.execute("SELECT id FROM protected_content")
             protected_ids = [row[0] for row in cursor.fetchall()]
@@ -161,7 +161,7 @@ def upload_suspect():
 
         # Get protected content details and hashes
         detections = []
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect("../data/sentinel.db")
         cursor = conn.cursor()
 
         for content_id in protected_ids:
@@ -264,7 +264,7 @@ def upload_suspect():
 def get_detections():
     """Retrieve all logged piracy events."""
     try:
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect("../data/sentinel.db")
         cursor = conn.cursor()
         cursor.execute("""
             SELECT d.id, p.title, p.league, d.stream_url, d.confidence_score, d.detected_at
@@ -298,7 +298,7 @@ def generate_dmca(detection_id):
     """Programmatically create and download a DMCA Notice PDF."""
     try:
         # Fetch detection details from DB
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect("../data/sentinel.db")
         cursor = conn.cursor()
         cursor.execute(
             """
@@ -341,7 +341,7 @@ def generate_dmca(detection_id):
         )
 
         # Update database to mark DMCA as generated
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect("../data/sentinel.db")
         cursor = conn.cursor()
         cursor.execute(
             "UPDATE detections SET dmca_generated = TRUE WHERE id = ?", (detection_id,)
@@ -387,7 +387,7 @@ def handle_live_detections(ws):
 
     while True:
         try:
-            conn = sqlite3.connect("sentinel.db")
+            conn = sqlite3.connect("../data/sentinel.db")
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT d.id, p.title, p.league, d.stream_url, d.confidence_score, d.detected_at

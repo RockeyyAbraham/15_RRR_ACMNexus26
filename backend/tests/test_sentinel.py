@@ -6,9 +6,9 @@ Tests all features with real Formula 1 video and pirated versions.
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from hash_engine import VideoHashEngine
-from matcher import VideoMatcher
-from dual_engine import DualModeEngine
+from engines.hash_engine import VideoHashEngine
+from engines.matcher import VideoMatcher
+from engines.dual_engine import DualModeEngine
 from datetime import datetime
 
 

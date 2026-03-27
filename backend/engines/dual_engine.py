@@ -6,10 +6,10 @@ Combines video and audio fingerprinting for maximum accuracy.
 import os
 import sys
 import math
-from hash_engine import VideoHashEngine
-from audio_engine import AudioHashEngine
-from matcher import VideoMatcher
-from redis_utils import redis_manager
+from .hash_engine import VideoHashEngine
+from .audio_engine import AudioHashEngine
+from .matcher import VideoMatcher
+from utils.redis_utils import redis_manager
 
 
 class DualModeEngine:
