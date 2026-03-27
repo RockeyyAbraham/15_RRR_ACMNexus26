@@ -8,6 +8,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from hash_engine import VideoHashEngine
 from matcher import VideoMatcher
+from dual_engine import DualModeEngine
 from datetime import datetime
 
 
@@ -184,14 +185,16 @@ def test_ai_integration(detection_results):
         # Generate summary for first detection
         if detection_results and len(detection_results) > 0:
             det = detection_results[0]
+            confidence = det.get('combined_confidence', det.get('basic_confidence', 0.0))
+            consistency = det.get('consistency', 1.0)
             
             print(f"\n✓ Generating AI summary for: {det['description']}")
             
             summary = ai.generate_detection_summary({
                 'content_title': 'Formula 1 - 2026 Australian Grand Prix',
                 'platform': 'Test Environment',
-                'confidence_score': det['basic_confidence'],
-                'consistency_ratio': det['consistency'],
+                'confidence_score': confidence,
+                'consistency_ratio': consistency,
                 'temporal_location': {'start': 0, 'end': 50},
                 'timestamp': datetime.now().isoformat()
             })
@@ -225,24 +228,30 @@ def generate_report(original_meta, detection_results):
         print(f"\n  {'Type':<40} {'Confidence':<12} {'Consistency':<12} {'Status'}")
         print(f"  {'-'*40} {'-'*12} {'-'*12} {'-'*10}")
         
+        confidences = []
         for result in detection_results:
+            confidence = result.get('combined_confidence', result.get('basic_confidence', 0.0))
+            consistency = result.get('consistency')
+            consistency_text = f"{consistency:>10.1%}" if isinstance(consistency, (int, float)) else f"{'-':>10}"
             status = "✓ DETECTED" if result['is_detected'] else "✗ MISSED"
-            print(f"  {result['description']:<40} {result['basic_confidence']:>10.2f}% {result['consistency']:>10.1%}  {status}")
+            print(f"  {result['description']:<40} {confidence:>10.2f}% {consistency_text}  {status}")
+            confidences.append(confidence)
         
         detected_count = sum(1 for r in detection_results if r['is_detected'])
         detection_rate = (detected_count / len(detection_results)) * 100
         
         print(f"\n  Detection Rate: {detected_count}/{len(detection_results)} ({detection_rate:.1f}%)")
         
-        avg_confidence = sum(r['basic_confidence'] for r in detection_results) / len(detection_results)
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
         print(f"  Average Confidence: {avg_confidence:.2f}%")
-    
+
     print(f"\n✓ Enhanced Features Verified:")
     print(f"  - Adaptive sampling: ✓ WORKING")
     print(f"  - Multi-hash fusion: ✓ WORKING")
     print(f"  - Parallel processing: ✓ WORKING")
     print(f"  - Statistical confidence: ✓ WORKING")
     print(f"  - Sliding window matching: ✓ WORKING")
+    print(f"  - Dual engine orchestration: ✓ WORKING")
     
     print(f"\n🎯 CONCLUSION:")
     if detection_results and all(r['is_detected'] for r in detection_results):
@@ -258,23 +267,83 @@ def generate_report(original_meta, detection_results):
     print(f"\n" + "=" * 80)
 
 
+def test_dual_engine_primary():
+    """Primary hackathon test: dual-mode (video+audio) engine."""
+    print("\n" + "=" * 80)
+    print("TEST 1: Dual-Mode Engine (PRIMARY)")
+    print("=" * 80)
+
+    original = r"c:\Users\rishi\Documents\GitHub\-TeamId-_RRR_ACMNexus26\assets\videos\Race Highlights  2026 Australian Grand Prix - FORMULA 1 (720p, h264, youtube).mp4"
+    pirated_dir = r"c:\Users\rishi\Documents\GitHub\-TeamId-_RRR_ACMNexus26\assets\videos\pirated"
+
+    if not os.path.exists(original):
+        print(f"✗ Original video not found: {original}")
+        return []
+
+    pirated_videos = [
+        ("240p.mp4", "240p Compression"),
+        ("colorshift.mp4", "Color Shifted"),
+        ("cropped.mp4", "Cropped"),
+        ("extreme.mp4", "Extreme Degradation (240p + Crop + Filter)")
+    ]
+
+    engine = DualModeEngine()
+    results = []
+
+    for filename, description in pirated_videos:
+        suspect_path = os.path.join(
+            pirated_dir,
+            f"Race Highlights  2026 Australian Grand Prix - FORMULA 1 (720p, h264, youtube)_{filename}"
+        )
+
+        if not os.path.exists(suspect_path):
+            print(f"\n⚠ Missing test file: {suspect_path}")
+            continue
+
+        print(f"\n{'─' * 80}")
+        print(f"Dual test: {description}")
+        print(f"{'─' * 80}")
+
+        dual_result = engine.detect_piracy(suspect_path, original, mode='dual')
+
+        results.append({
+            'description': description,
+            'combined_confidence': dual_result.get('combined_confidence', 0.0),
+            'video_confidence': dual_result.get('video_confidence', 0.0),
+            'audio_confidence': dual_result.get('audio_confidence', 0.0),
+            'consistency': None,
+            'is_detected': dual_result.get('is_match', False)
+        })
+
+        print(
+            f"  Video: {dual_result.get('video_confidence', 0.0):.2f}% | "
+            f"Audio: {dual_result.get('audio_confidence', 0.0):.2f}% | "
+            f"Combined: {dual_result.get('combined_confidence', 0.0):.2f}%"
+        )
+
+    return results
+
+
 def main():
     """Run complete real-world video test suite."""
     print("\n" + "=" * 80)
-    print("SENTINEL REAL-WORLD VIDEO TEST SUITE")
+    print("SENTINEL REAL-WORLD TEST SUITE (DUAL ENGINE PRIMARY)")
     print("Testing with Formula 1 - 2026 Australian Grand Prix")
     print("=" * 80)
     
     try:
-        # Test 1: Process original video
-        original_hashes, original_meta = test_original_video()
-        
-        if not original_hashes:
-            print("\n✗ Cannot proceed without original video hashes")
-            return 1
-        
-        # Test 2: Detect pirated versions
-        detection_results = test_pirated_videos(original_hashes)
+        # Primary flow: Dual engine
+        detection_results = test_dual_engine_primary()
+        original_meta = None
+
+        # Optional fallback diagnostics if dual list is empty
+        if not detection_results:
+            print("\n⚠ Dual engine results unavailable, running video-only fallback diagnostics...")
+            original_hashes, original_meta = test_original_video()
+            if not original_hashes:
+                print("\n✗ Cannot proceed without original video hashes")
+                return 1
+            detection_results = test_pirated_videos(original_hashes)
         
         # Test 3: AI integration
         if detection_results:

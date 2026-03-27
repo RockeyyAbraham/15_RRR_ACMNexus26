@@ -108,7 +108,8 @@ def upload_protected():
         conn.close()
 
         # Cache hashes in Redis for fast retrieval
-        redis_manager.cache_protected_hashes(content_id, hashes, ttl=3600)
+        if content_id is not None:
+            redis_manager.cache_protected_hashes(content_id, hashes, ttl=3600)
 
         # Clean up temp file
         os.remove(video_path)
@@ -164,10 +165,23 @@ def upload_suspect():
         cursor = conn.cursor()
 
         for content_id in protected_ids:
+            # Initialize variables to avoid UnboundLocalError
+            title = "Unknown"
+            league = "Unknown"
+            protected_hashes = []
+
             # Try to get hashes from Redis cache first
             cached_hashes = redis_manager.get_protected_hashes(content_id)
             if cached_hashes is not None:
                 protected_hashes = cached_hashes
+                # Get title and league from database since we don't cache them
+                cursor.execute(
+                    "SELECT title, league FROM protected_content WHERE id = ?",
+                    (content_id,),
+                )
+                row = cursor.fetchone()
+                if row is not None:
+                    title, league = row
             else:
                 # Fallback to database
                 cursor.execute(
@@ -201,17 +215,18 @@ def upload_suspect():
                 detection_id = cursor.lastrowid
 
                 # Cache detection result in Redis
-                detection_data = {
-                    "detection_id": detection_id,
-                    "content_id": content_id,
-                    "confidence_score": match_result["confidence_score"],
-                    "stream_url": request.form.get("stream_url", "unknown"),
-                    "detected_at": datetime.now().isoformat(),
-                    "match_details": match_result,
-                }
-                redis_manager.cache_detection_result(
-                    detection_id, detection_data, ttl=1800
-                )
+                if detection_id is not None:
+                    detection_data = {
+                        "detection_id": detection_id,
+                        "content_id": content_id,
+                        "confidence_score": match_result["confidence_score"],
+                        "stream_url": request.form.get("stream_url", "unknown"),
+                        "detected_at": datetime.now().isoformat(),
+                        "match_details": match_result,
+                    }
+                    redis_manager.cache_detection_result(
+                        detection_id, detection_data, ttl=1800
+                    )
 
                 detections.append(
                     {
