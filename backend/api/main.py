@@ -7,6 +7,7 @@ import os
 import json
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 from flask import Flask, request, jsonify, send_file
 from flask_sock import Sock
 
@@ -21,21 +22,44 @@ from utils.redis_utils import redis_manager
 app = Flask(__name__)
 sock = Sock(app)  # Initialize WebSocket support
 
+# Stable paths based on repository layout
+API_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = API_DIR.parent
+DB_PATH = BACKEND_DIR / "data" / "sentinel.db"
+TEMP_DIR = BACKEND_DIR / "temp"
+NOTICES_DIR = BACKEND_DIR.parent / "notices"
+
+# Detection policy (hackathon-safe defaults)
+AUTO_ACTION_THRESHOLD = float(os.getenv("AUTO_ACTION_THRESHOLD", "85"))
+MANUAL_REVIEW_THRESHOLD = float(os.getenv("MANUAL_REVIEW_THRESHOLD", "75"))
+
 # Initialize engine instances
 hash_engine = VideoHashEngine(frame_sample_rate=10, hash_size=8)
 matcher = VideoMatcher(threshold=85.0, hash_size=8)
 audio_engine = AudioHashEngine()
-ai_engine = SentinelAI()
-generator = DMCAGenerator(output_dir="../notices")
+ai_engine = None
+generator = DMCAGenerator(output_dir=str(NOTICES_DIR))
 
 # Ensure notices directory exists
-os.makedirs("../notices", exist_ok=True)
+NOTICES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def get_ai_engine():
+    """Lazily initialize AI engine so API can boot without optional AI config."""
+    global ai_engine
+    if ai_engine is None:
+        try:
+            ai_engine = SentinelAI()
+        except Exception:
+            ai_engine = False
+    return ai_engine if ai_engine else None
 
 
 # Database setup
 def init_db():
     """Initialize SQLite database with required tables."""
-    conn = sqlite3.connect("../data/sentinel.db")
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(DB_PATH))
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS protected_content (
@@ -81,8 +105,8 @@ def upload_protected():
         return jsonify({"error": "No selected file"}), 400
 
     # Save uploaded file temporarily
-    video_path = f"temp/{video_file.filename}"
-    os.makedirs("temp", exist_ok=True)
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    video_path = TEMP_DIR / video_file.filename
     video_file.save(video_path)
 
     try:
@@ -93,7 +117,7 @@ def upload_protected():
         audio_hash = audio_engine.extract_audio_hash(video_path)
         
         # Store in database
-        conn = sqlite3.connect("../data/sentinel.db")
+        conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
         cursor.execute(
             """
@@ -147,8 +171,8 @@ def upload_suspect():
         return jsonify({"error": "No selected file"}), 400
 
     # Save uploaded file temporarily
-    video_path = f"temp/{video_file.filename}"
-    os.makedirs("temp", exist_ok=True)
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    video_path = TEMP_DIR / video_file.filename
     video_file.save(video_path)
 
     try:
@@ -162,7 +186,7 @@ def upload_suspect():
         protected_ids = redis_manager.get_all_protected_content_ids()
         if not protected_ids:
             # Fallback to database
-            conn = sqlite3.connect("../data/sentinel.db")
+            conn = sqlite3.connect(str(DB_PATH))
             cursor = conn.cursor()
             cursor.execute("SELECT id FROM protected_content")
             protected_ids = [row[0] for row in cursor.fetchall()]
@@ -170,7 +194,7 @@ def upload_suspect():
 
         # Get protected content details and hashes
         detections = []
-        conn = sqlite3.connect("../data/sentinel.db")
+        conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
 
         for content_id in protected_ids:
@@ -224,13 +248,29 @@ def upload_suspect():
             else:  # Video only
                 combined_confidence = video_confidence
             
-            # Adjust match result with combined confidence
+            # Unified final decision from multi-modal confidence
+            if combined_confidence >= AUTO_ACTION_THRESHOLD:
+                decision_tier = "auto_action"
+                decision_reason = "score_above_auto_threshold"
+            elif combined_confidence >= MANUAL_REVIEW_THRESHOLD:
+                decision_tier = "manual_review"
+                decision_reason = "score_above_review_threshold"
+            else:
+                decision_tier = "no_match"
+                decision_reason = "score_below_review_threshold"
+
+            is_match = decision_tier != "no_match"
+
+            # Attach scored details for observability
             video_match_result["confidence_score"] = combined_confidence
             video_match_result["audio_match_score"] = audio_confidence
             video_match_result["video_match_score"] = video_confidence
             video_match_result["multi_modal"] = audio_confidence > 0
+            video_match_result["is_match"] = is_match
+            video_match_result["decision_tier"] = decision_tier
+            video_match_result["decision_reason"] = decision_reason
 
-            if video_match_result["is_match"]:
+            if is_match:
                 # Store detection event
                 cursor.execute(
                     """
@@ -251,6 +291,8 @@ def upload_suspect():
                         "detection_id": detection_id,
                         "content_id": content_id,
                         "confidence_score": video_match_result["confidence_score"],
+                        "decision_tier": decision_tier,
+                        "decision_reason": decision_reason,
                         "stream_url": request.form.get("stream_url", "unknown"),
                         "detected_at": datetime.now().isoformat(),
                         "match_details": video_match_result,
@@ -269,6 +311,8 @@ def upload_suspect():
                         "audio_match_score": video_match_result.get("audio_match_score", 0.0),
                         "video_match_score": video_match_result.get("video_match_score", 0.0),
                         "multi_modal": video_match_result.get("multi_modal", False),
+                        "decision_tier": decision_tier,
+                        "decision_reason": decision_reason,
                         "stream_url": request.form.get("stream_url", "unknown"),
                     }
                 )
@@ -283,6 +327,10 @@ def upload_suspect():
             {
                 "message": "Suspect video processed",
                 "detections": detections,
+                "thresholds": {
+                    "auto_action": AUTO_ACTION_THRESHOLD,
+                    "manual_review": MANUAL_REVIEW_THRESHOLD,
+                },
                 "processing_time_seconds": suspect_metadata["processing_time_seconds"],
             }
         ), 200
@@ -298,7 +346,7 @@ def upload_suspect():
 def get_detections():
     """Retrieve all logged piracy events."""
     try:
-        conn = sqlite3.connect("../data/sentinel.db")
+        conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
         cursor.execute("""
             SELECT d.id, p.title, p.league, d.stream_url, d.confidence_score, d.detected_at
@@ -332,7 +380,7 @@ def generate_dmca(detection_id):
     """Programmatically create and download a DMCA Notice PDF."""
     try:
         # Fetch detection details from DB
-        conn = sqlite3.connect("../data/sentinel.db")
+        conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
         cursor.execute(
             """
@@ -375,7 +423,7 @@ def generate_dmca(detection_id):
         )
 
         # Update database to mark DMCA as generated
-        conn = sqlite3.connect("../data/sentinel.db")
+        conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
         cursor.execute(
             "UPDATE detections SET dmca_generated = TRUE WHERE id = ?", (detection_id,)
@@ -396,7 +444,12 @@ def generate_dmca(detection_id):
 @app.route("/health", methods=["GET"])
 def health_check():
     """System health check for monitor status."""
-    engines_status = ["hashing", "matching", "ai", "generator"]
+    engines_status = ["hashing", "matching", "generator"]
+    if get_ai_engine() is not None:
+        engines_status.append("ai")
+    else:
+        engines_status.append("ai_unavailable")
+
     if redis_manager.is_available():
         engines_status.append("redis")
     else:
@@ -421,7 +474,7 @@ def handle_live_detections(ws):
 
     while True:
         try:
-            conn = sqlite3.connect("../data/sentinel.db")
+            conn = sqlite3.connect(str(DB_PATH))
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT d.id, p.title, p.league, d.stream_url, d.confidence_score, d.detected_at
