@@ -133,10 +133,10 @@ class DualModeEngine:
         adaptive_threshold = self.matcher.threshold
         reason = "primary_threshold"
 
-        # If audio modality is unavailable, relax threshold slightly
+        # If audio modality is unavailable, threshold stays at 90%
         if not audio_available:
-            adaptive_threshold = min(adaptive_threshold, 78.0)
-            reason = "audio_unavailable_adaptive"
+            adaptive_threshold = self.matcher.threshold
+            reason = "strict_threshold"
 
         is_match = pattern_score >= adaptive_threshold
 
