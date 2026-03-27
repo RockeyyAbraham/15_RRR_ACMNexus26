@@ -28,7 +28,7 @@ export type UploadPayload = {
 export type FingerprintResponse = {
   message: string;
   content_id: number;
-  hash_count: number;
+  video_hash_count: number;
   processing_time_seconds: number;
 };
 

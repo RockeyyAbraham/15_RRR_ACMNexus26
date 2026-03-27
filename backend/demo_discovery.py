@@ -17,7 +17,7 @@ import time
 from datetime import datetime
 
 # Backend API base URL
-API_BASE = "http://localhost:5000"
+API_BASE = "http://localhost:8000"
 
 # Demo candidate URLs with different characteristics
 DEMO_CANDIDATES = [

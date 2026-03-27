@@ -13,6 +13,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlparse
 
 from flask import Flask, request, jsonify, send_file
 
@@ -35,12 +36,38 @@ except ImportError:
 
             return decorator
 
-from engines.hash_engine import VideoHashEngine
-from engines.audio_engine import AudioHashEngine
-from engines.matcher import VideoMatcher
-from engines.ai_engine import SentinelAI
-from generators.dmca_generator import DMCAGenerator
 from utils.redis_utils import redis_manager
+
+# Configure comprehensive logging
+LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+ERROR_LOG = LOG_DIR / "error.log"
+ACCESS_LOG = LOG_DIR / "access.log"
+
+# File handler for errors
+file_handler = logging.FileHandler(ERROR_LOG)
+file_handler.setLevel(logging.ERROR)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+))
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(message)s'))
+
+# Root logger configuration
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=[file_handler, console_handler]
+)
+
+logger = logging.getLogger(__name__)
+
+try:
+    import requests
+except ImportError:
+    requests = None
 
 app = Flask(__name__)
 CORS(app)
@@ -57,11 +84,14 @@ MANUAL_REVIEW_THRESHOLD = float(os.getenv("MANUAL_REVIEW_THRESHOLD", "75"))
 MAX_ASYNC_WORKERS = int(os.getenv("MAX_ASYNC_WORKERS", "2"))
 MAX_QUEUE_SIZE = int(os.getenv("MAX_QUEUE_SIZE", "20"))
 
-hash_engine = VideoHashEngine(frame_sample_rate=10, hash_size=8)
-matcher = VideoMatcher(threshold=85.0, hash_size=8)
-audio_engine = AudioHashEngine()
+hash_engine = None
+matcher = None
+audio_engine = None
 ai_engine = None
-generator = DMCAGenerator(output_dir=str(NOTICES_DIR))
+generator = None
+
+engine_init_error = None
+generator_init_error = None
 
 NOTICES_DIR.mkdir(parents=True, exist_ok=True)
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -69,6 +99,8 @@ TEMP_DIR.mkdir(parents=True, exist_ok=True)
 executor = ThreadPoolExecutor(max_workers=MAX_ASYNC_WORKERS)
 jobs = {}
 jobs_lock = threading.Lock()
+monitor_sessions = {}
+monitor_lock = threading.Lock()
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 telemetry_logger = logging.getLogger("sentinel.telemetry")
@@ -79,10 +111,55 @@ def get_ai_engine():
     global ai_engine
     if ai_engine is None:
         try:
+            from engines.ai_engine import SentinelAI
             ai_engine = SentinelAI()
         except Exception:
             ai_engine = False
     return ai_engine if ai_engine else None
+
+
+def get_media_engines():
+    """Lazily initialize media engines to avoid hard import dependency at boot."""
+    global hash_engine, matcher, audio_engine, engine_init_error
+
+    if hash_engine and matcher and audio_engine:
+        return hash_engine, matcher, audio_engine
+
+    if engine_init_error is not None:
+        raise RuntimeError(f"Media engines unavailable: {engine_init_error}")
+
+    try:
+        from engines.hash_engine import VideoHashEngine
+        from engines.audio_engine import AudioHashEngine
+        from engines.matcher import VideoMatcher
+
+        hash_engine = VideoHashEngine(frame_sample_rate=10, hash_size=8)
+        matcher = VideoMatcher(threshold=85.0, hash_size=8)
+        audio_engine = AudioHashEngine()
+        return hash_engine, matcher, audio_engine
+    except Exception as e:
+        engine_init_error = str(e)
+        raise RuntimeError(f"Media engines unavailable: {e}") from e
+
+
+def get_dmca_generator():
+    """Lazily initialize DMCA generator for environments without reportlab."""
+    global generator, generator_init_error
+
+    if generator is not None:
+        return generator
+
+    if generator_init_error is not None:
+        raise RuntimeError(f"DMCA generator unavailable: {generator_init_error}")
+
+    try:
+        from generators.dmca_generator import DMCAGenerator
+
+        generator = DMCAGenerator(output_dir=str(NOTICES_DIR))
+        return generator
+    except Exception as e:
+        generator_init_error = str(e)
+        raise RuntimeError(f"DMCA generator unavailable: {e}") from e
 
 
 def log_event(event_type: str, **payload):
@@ -158,6 +235,75 @@ def classify_detection_tier(score: float):
     if score >= MANUAL_REVIEW_THRESHOLD:
         return "manual_review", "score_above_review_threshold"
     return "no_match", "score_below_review_threshold"
+
+
+def update_candidate_record(candidate_id: str, status: str = None, verification_job_id: str = None, notes: str = None):
+    """Update candidate lifecycle fields for auditability."""
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+
+    fields = []
+    params = []
+    if status is not None:
+        fields.append("status = ?")
+        params.append(status)
+    if verification_job_id is not None:
+        fields.append("verification_job_id = ?")
+        params.append(verification_job_id)
+    if notes is not None:
+        fields.append("notes = COALESCE(notes, '') || ?")
+        params.append(f"\n{notes}")
+
+    if fields:
+        fields.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(candidate_id)
+        cursor.execute(f"UPDATE candidates SET {', '.join(fields)} WHERE id = ?", params)
+        conn.commit()
+    conn.close()
+
+
+def resolve_candidate_media(url: str) -> Path | None:
+    """Resolve candidate URL to a local media file when possible.
+
+    Supports:
+    - local absolute/relative file path
+    - direct media URL (.mp4/.mov/.mkv/.webm/.m4v)
+    """
+    media_ext = (".mp4", ".mov", ".mkv", ".webm", ".m4v")
+
+    # Local path support for hackathon demos
+    local_candidate = Path(url)
+    if local_candidate.exists() and local_candidate.is_file():
+        return local_candidate
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return None
+
+    if not parsed.path.lower().endswith(media_ext):
+        return None
+
+    if requests is None:
+        return None
+
+    filename = f"candidate_{uuid.uuid4()}{Path(parsed.path).suffix.lower() or '.mp4'}"
+    dest = TEMP_DIR / filename
+
+    try:
+        with requests.get(url, stream=True, timeout=30) as r:
+            r.raise_for_status()
+            with open(dest, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+        return dest
+    except Exception:
+        try:
+            if dest.exists():
+                dest.unlink()
+        except Exception:
+            pass
+        return None
 
 
 def calculate_suspicion_score(keyword_hits: list, event_context: str, platform: str, url: str) -> float:
@@ -258,20 +404,21 @@ def init_db():
 
 def process_protected_video(video_path: Path, title: str, league: str, progress_cb=None, cancel_cb=None):
     start = time.perf_counter()
+    local_hash_engine, _, local_audio_engine = get_media_engines()
 
     if progress_cb:
         progress_cb("hashing_video")
     if cancel_cb and cancel_cb():
         raise RuntimeError("Job cancelled")
 
-    video_hashes, video_metadata = hash_engine.hash_video(video_path)
+    video_hashes, video_metadata = local_hash_engine.hash_video(video_path)
 
     if progress_cb:
         progress_cb("hashing_audio")
     if cancel_cb and cancel_cb():
         raise RuntimeError("Job cancelled")
 
-    audio_hash = audio_engine.extract_audio_hash(video_path)
+    audio_hash = local_audio_engine.extract_audio_hash(video_path)
 
     if progress_cb:
         progress_cb("persisting")
@@ -323,20 +470,21 @@ def process_protected_video(video_path: Path, title: str, league: str, progress_
 
 def process_suspect_video(video_path: Path, stream_url: str, progress_cb=None, cancel_cb=None):
     start = time.perf_counter()
+    local_hash_engine, local_matcher, local_audio_engine = get_media_engines()
 
     if progress_cb:
         progress_cb("hashing_video")
     if cancel_cb and cancel_cb():
         raise RuntimeError("Job cancelled")
 
-    suspect_hashes, suspect_metadata = hash_engine.hash_video(video_path)
+    suspect_hashes, suspect_metadata = local_hash_engine.hash_video(video_path)
 
     if progress_cb:
         progress_cb("hashing_audio")
     if cancel_cb and cancel_cb():
         raise RuntimeError("Job cancelled")
 
-    suspect_audio_hash = audio_engine.extract_audio_hash(video_path)
+    suspect_audio_hash = local_audio_engine.extract_audio_hash(video_path)
 
     if progress_cb:
         progress_cb("matching")
@@ -359,12 +507,12 @@ def process_suspect_video(video_path: Path, stream_url: str, progress_cb=None, c
         if not protected_hashes:
             continue
 
-        video_result = matcher.match_video_sequences(suspect_hashes, protected_hashes)
+        video_result = local_matcher.match_video_sequences(suspect_hashes, protected_hashes)
         video_confidence = float(video_result.get("confidence_score", 0.0))
 
         audio_confidence = 0.0
         if suspect_audio_hash and protected_audio_hash:
-            _, audio_confidence = matcher.compare_hashes(suspect_audio_hash, protected_audio_hash)
+            _, audio_confidence = local_matcher.compare_hashes(suspect_audio_hash, protected_audio_hash)
 
         combined_confidence = (video_confidence * 0.7 + audio_confidence * 0.3) if audio_confidence > 0 else video_confidence
 
@@ -474,19 +622,55 @@ def submit_background_job(job_id: str, job_type: str, video_path: Path, payload:
                 progress_cb=lambda s: update_job(job_id, stage=s),
                 cancel_cb=lambda: should_abort(job_id),
             )
+        elif job_type == "candidate_verify":
+            candidate_id = payload.get("candidate_id")
+            candidate_url = payload.get("candidate_url", "")
+            update_job(job_id, stage="resolving_media")
+            media_path = resolve_candidate_media(candidate_url)
+            if media_path is None:
+                result = {
+                    "message": "Candidate queued but media download/clip resolver not available for this URL.",
+                    "candidate_id": candidate_id,
+                    "candidate_url": candidate_url,
+                    "detections": [],
+                }
+            else:
+                result = process_suspect_video(
+                    video_path=media_path,
+                    stream_url=candidate_url,
+                    progress_cb=lambda s: update_job(job_id, stage=s),
+                    cancel_cb=lambda: should_abort(job_id),
+                )
+                if media_path != video_path:
+                    try:
+                        if media_path.exists():
+                            media_path.unlink()
+                    except Exception:
+                        pass
         else:
             raise ValueError(f"Unsupported job type: {job_type}")
 
         if should_abort(job_id):
             update_job(job_id, status="cancelled", stage="cancelled")
+            if payload.get("candidate_id"):
+                update_candidate_record(payload["candidate_id"], status="cancelled")
         else:
             update_job(job_id, status="completed", stage="completed", result=result, completed_at=datetime.now().isoformat())
+            if payload.get("candidate_id"):
+                if result.get("detections"):
+                    update_candidate_record(payload["candidate_id"], status="verified_piracy")
+                else:
+                    update_candidate_record(payload["candidate_id"], status="verified_clean")
 
     except Exception as e:
         if "cancelled" in str(e).lower() or should_abort(job_id):
             update_job(job_id, status="cancelled", stage="cancelled")
+            if payload.get("candidate_id"):
+                update_candidate_record(payload["candidate_id"], status="cancelled")
         else:
             update_job(job_id, status="failed", stage="failed", error=str(e))
+            if payload.get("candidate_id"):
+                update_candidate_record(payload["candidate_id"], status="verification_failed", notes=f"verification error: {e}")
 
     finally:
         try:
@@ -520,6 +704,7 @@ def upload_protected():
         os.remove(video_path)
         return jsonify(result), 201
     except Exception as e:
+        logger.error(f"Error uploading protected content: {e}", exc_info=True)
         if os.path.exists(video_path):
             os.remove(video_path)
         return jsonify({"error": str(e)}), 500
@@ -592,9 +777,14 @@ def upload_suspect_async():
     payload = {
         "stream_url": request.form.get("stream_url", "unknown"),
         "filename": video_file.filename,
+        "candidate_id": request.form.get("candidate_id"),
     }
     job_id = create_job("suspect_upload", payload)
     executor.submit(submit_background_job, job_id, "suspect_upload", video_path, payload)
+
+    candidate_id = request.form.get("candidate_id")
+    if candidate_id:
+        update_candidate_record(candidate_id, status="verifying", verification_job_id=job_id)
 
     return jsonify({"job_id": job_id, "status": "queued", "job_type": "suspect_upload"}), 202
 
@@ -672,14 +862,30 @@ def submit_candidate():
             status=status,
         )
 
+        verification_job_id = None
+        if status == "queued":
+            if get_active_job_count() < MAX_QUEUE_SIZE:
+                payload = {
+                    "candidate_id": candidate_id,
+                    "candidate_url": url,
+                    "stream_url": url,
+                }
+                verification_job_id = create_job("candidate_verify", payload)
+                update_candidate_record(candidate_id, status="verifying", verification_job_id=verification_job_id)
+                placeholder = TEMP_DIR / f"candidate_placeholder_{verification_job_id}.tmp"
+                placeholder.write_text("candidate-verification")
+                executor.submit(submit_background_job, verification_job_id, "candidate_verify", placeholder, payload)
+            else:
+                update_candidate_record(candidate_id, notes="queue full: verification deferred")
+
         return jsonify(
             {
                 "candidate_id": candidate_id,
                 "url": url,
                 "platform": platform,
                 "suspicion_score": round(suspicion_score, 3),
-                "status": status,
-                "verification_job_id": None,
+                "status": "verifying" if verification_job_id else status,
+                "verification_job_id": verification_job_id,
                 "triage_thresholds": {
                     "discard": 0.55,
                     "watch_list": 0.75,
@@ -755,6 +961,63 @@ def get_candidates():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/monitor/start", methods=["POST"])
+def monitor_start():
+    """Start a lightweight in-memory monitor session for discovery orchestration."""
+    data = request.get_json(silent=True) or {}
+    session_id = str(uuid.uuid4())
+    session = {
+        "session_id": session_id,
+        "event_context": data.get("event_context", ""),
+        "keywords": data.get("keywords", []),
+        "platforms": data.get("platforms", ["manual"]),
+        "poll_interval_seconds": int(data.get("poll_interval_seconds", 30)),
+        "status": "running",
+        "started_at": datetime.now().isoformat(),
+        "stopped_at": None,
+    }
+    with monitor_lock:
+        monitor_sessions[session_id] = session
+    return jsonify(session), 201
+
+
+@app.route("/monitor/stop", methods=["POST"])
+def monitor_stop():
+    """Stop an existing monitor session."""
+    data = request.get_json(silent=True) or {}
+    session_id = data.get("session_id")
+    if not session_id:
+        return jsonify({"error": "session_id is required"}), 400
+
+    with monitor_lock:
+        session = monitor_sessions.get(session_id)
+        if not session:
+            return jsonify({"error": "Monitor session not found"}), 404
+        session["status"] = "stopped"
+        session["stopped_at"] = datetime.now().isoformat()
+
+    return jsonify(session), 200
+
+
+@app.route("/monitor/status", methods=["GET"])
+def monitor_status():
+    """List monitor sessions and summary counts."""
+    with monitor_lock:
+        sessions = list(monitor_sessions.values())
+
+    running = sum(1 for s in sessions if s.get("status") == "running")
+    stopped = sum(1 for s in sessions if s.get("status") == "stopped")
+
+    return jsonify({
+        "sessions": sessions,
+        "summary": {
+            "total": len(sessions),
+            "running": running,
+            "stopped": stopped,
+        },
+    }), 200
 
 
 @app.route("/metrics/summary", methods=["GET"])
@@ -887,7 +1150,8 @@ def generate_dmca(detection_id):
 
         content_info = {"title": row[4], "league": row[5]}
         infringer_info = {"url": row[1], "confidence": row[2], "timestamp": row[3]}
-        pdf_path = generator.create_notice(row[0], content_info, infringer_info)
+        local_generator = get_dmca_generator()
+        pdf_path = local_generator.create_notice(row[0], content_info, infringer_info)
 
         conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
@@ -907,7 +1171,19 @@ def generate_dmca(detection_id):
 
 @app.route("/health", methods=["GET"])
 def health_check():
-    engines_status = ["hashing", "matching", "generator"]
+    engines_status = []
+    try:
+        get_media_engines()
+        engines_status.extend(["hashing", "matching", "audio"])
+    except Exception:
+        engines_status.append("media_unavailable")
+
+    try:
+        get_dmca_generator()
+        engines_status.append("generator")
+    except Exception:
+        engines_status.append("generator_unavailable")
+
     if get_ai_engine() is not None:
         engines_status.append("ai")
     else:
@@ -971,4 +1247,13 @@ def handle_live_detections(ws):
 
 
 if __name__ == "__main__":
+    logger.info("="*80)
+    logger.info("SENTINEL BACKEND STARTING")
+    logger.info("="*80)
+    logger.info(f"Error logs: {ERROR_LOG}")
+    logger.info(f"Access logs: {ACCESS_LOG}")
+    logger.info(f"Database: {DB_PATH}")
+    logger.info(f"Temp directory: {TEMP_DIR}")
+    logger.info(f"Notices directory: {NOTICES_DIR}")
+    logger.info("="*80)
     app.run(debug=True, port=8000)

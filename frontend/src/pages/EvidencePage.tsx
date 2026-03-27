@@ -59,12 +59,16 @@ export default function EvidencePage() {
           <StatCard label="Match Probability" value="99.8%" hint="TARGET_ID: 0X8829-X-DELTA" accent="neon" />
           <div className="glass-card space-y-4 p-5">
             <div>
-              <div className="mb-2 text-sm text-slate-300">Source IP</div>
-              <input className="field-shell w-full" value="185.158.113.44" readOnly />
+              <label htmlFor="source-ip" className="mb-2 block text-sm text-slate-300">
+                Source IP
+              </label>
+              <input id="source-ip" className="field-shell w-full" value="185.158.113.44" readOnly />
             </div>
             <div>
-              <div className="mb-2 text-sm text-slate-300">Location</div>
-              <input className="field-shell w-full" value="MOSCOW_REGION [RU]" readOnly />
+              <label htmlFor="source-location" className="mb-2 block text-sm text-slate-300">
+                Location
+              </label>
+              <input id="source-location" className="field-shell w-full" value="MOSCOW_REGION [RU]" readOnly />
             </div>
             <button type="button" className="cyber-button w-full">
               Approve For DMCA

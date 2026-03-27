@@ -79,7 +79,7 @@ export default function IngestPage() {
 
       setProgress({ video: 100, audio: 100 });
       setMessage(
-        `${response.message}. Content ID ${response.content_id} indexed with ${response.hash_count} protected hashes.`,
+        `${response.message}. Content ID ${response.content_id} indexed with ${response.video_hash_count} protected hashes.`,
       );
     } catch {
       setError("Fingerprint generation failed. Verify the Flask backend is online.");

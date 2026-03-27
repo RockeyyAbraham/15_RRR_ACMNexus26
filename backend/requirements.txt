@@ -1,4 +1,6 @@
 flask
+fastapi
+uvicorn[standard]
 flask-sock
 opencv-python
 imagehash
@@ -10,3 +12,6 @@ librosa
 redis
 python-dotenv
 flask-cors
+requests
+soundfile
+fakeredis

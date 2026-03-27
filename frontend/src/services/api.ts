@@ -29,8 +29,14 @@ export async function generateFingerprint({
 }
 
 export async function fetchDetections(): Promise<DetectionApiItem[]> {
-  const { data } = await api.get<DetectionApiItem[]>("/detections");
-  return Array.isArray(data) ? data : [];
+  const { data } = await api.get<{ detections?: DetectionApiItem[] } | DetectionApiItem[]>("/detections");
+  if (Array.isArray(data)) {
+    return data;
+  }
+  if (Array.isArray(data?.detections)) {
+    return data.detections;
+  }
+  return [];
 }
 
 export function getDmcaDownloadUrl(detectionId: number) {
