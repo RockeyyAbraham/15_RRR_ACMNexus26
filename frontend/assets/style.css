@@ -1,5 +1,149 @@
-/* Custom styles for Sentinel Engine UI */
+/* Hacker/Cyber style overrides */
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Roboto Mono', monospace !important;
+}
+
+/* Base text overrides */
+p, span, div {
+    font-family: 'Roboto Mono', monospace !important;
+}
+
+/* Primary Button Highlighting */
 .stButton > button {
-    border-radius: 8px;
+    background-color: #CCFF00 !important;
+    color: #121415 !important;
+    font-weight: 800 !important;
+    border: none !important;
+    border-radius: 4px !important;
+    height: 3.5rem !important;
+    width: 100% !important;
+    font-size: 1.1em !important;
+    letter-spacing: 1px;
+}
+
+.stButton > button:hover {
+    background-color: #aacc00 !important;
+    color: #121415 !important;
+}
+
+.stButton > button:focus {
+    box-shadow: 0 0 10px #CCFF00 !important;
+}
+
+/* Custom Nav/Header */
+.navbar {
+    display: flex;
+    justify-content: flex-start;
+    gap: 30px;
+    padding: 10px 0;
+    color: #8c8c8c;
     font-weight: bold;
+    border-bottom: 1px solid #222;
+    margin-bottom: 25px;
+    font-size: 0.9em;
+    align-items: center;
+}
+.navbar .active-tab {
+    color: #CCFF00;
+    border-bottom: 2px solid #CCFF00;
+    padding-bottom: 10px;
+}
+.navbar .tab:hover {
+    color: #FFF;
+    cursor: pointer;
+}
+
+/* Log Cards Customization */
+.log-card {
+    background-color: #1C1D1F;
+    border-left: 2px solid #3a3b3c;
+    padding: 15px;
+    height: 110px;
+    font-size: 0.85em;
+    color: #bbb;
+}
+
+.log-card.blue-bar { border-left-color: #2b70c9; }
+.log-card.yellow-bar { border-left-color: #CCFF00; }
+.log-card.grey-bar { border-left-color: #555; }
+
+/* Metrics */
+.metric-container {
+    background-color: #1C1D1F;
+    padding: 20px;
+    border-radius: 4px;
+    margin-bottom: 15px;
+}
+.metric-title {
+    font-size: 0.75em;
+    color: #888;
+    letter-spacing: 1.5px;
+    margin-bottom: 8px;
+}
+.metric-value {
+    font-size: 2.5em;
+    font-weight: 800;
+    color: #CCFF00;
+    line-height: 1;
+}
+
+/* Progress bars */
+.progress-container {
+    margin-top: 5px;
+}
+.progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7em;
+    margin-bottom: 8px;
+    color: #8c8c8c;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+.progress-label span.ready { color: #CCFF00; }
+.progress-label span.pending { color: #8c8c8c; }
+
+.progress-bar-bg {
+    height: 6px;
+    background-color: #222;
+    border-radius: 0px;
+}
+.progress-bar-fill.yellow {
+    height: 100%;
+    width: 60%;
+    background-color: #CCFF00;
+}
+.progress-bar-fill.blue {
+    height: 100%;
+    width: 20%;
+    background-color: #2b70c9;
+}
+
+/* Base UI Hiding */
+header { display: none !important; }
+
+/* Custom Inputs to look like the design */
+.stTextInput input {
+    background-color: #121415 !important;
+    color: #FFF !important;
+    border: 1px solid #333 !important;
+    border-radius: 2px !important;
+    padding: 18px 15px !important;
+}
+.stTextInput input:focus {
+    border-color: #CCFF00 !important;
+    box-shadow: none !important;
+}
+
+/* File Uploader styling */
+.stFileUploader > div > div {
+    background-color: #121415 !important;
+    border: 1px dashed #444 !important;
+    border-radius: 4px !important;
+    min-height: 250px !important;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
