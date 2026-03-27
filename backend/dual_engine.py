@@ -132,8 +132,8 @@ class DualModeEngine:
             fused_score = video_confidence
 
         # Perceptron-style activation over confidence features
-        z = (self.bias) + (self.video_weight * video_confidence) + (self.audio_weight * audio_confidence) + (5.0 if not audio_available else 0.0)
-        probability = 1.0 / (1.0 + math.exp(-self.sigmoid_steepness * z))
+        z = (-45.0) + (1.1 * video_confidence) + (0.4 * audio_confidence) + (5.0 if not audio_available else 0.0)
+        probability = 1.0 / (1.0 + math.exp(-0.08 * z))
         pattern_score = max(fused_score, probability * 100.0)
 
         adaptive_threshold = self.matcher.threshold
