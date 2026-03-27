@@ -419,29 +419,37 @@ def generate_pitchshift_variant(input_path, output_path):
     try:
         import librosa
         import soundfile as sf
+        import tempfile
         
-        # Extract audio
-        y, sr = librosa.load(input_path, sr=None)
+        # Extract audio to temp file first
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_audio:
+            temp_path = temp_audio.name
         
-        # Pitch shift (+2 semitones)
+        # Extract audio using ffmpeg
+        ffmpeg_path = r"C:\Users\rishi\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
+        cmd = [ffmpeg_path, '-i', input_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '22050', '-y', temp_path]
+        subprocess.run(cmd, check=True, capture_output=True)
+        
+        # Load audio and pitch shift
+        y, sr = librosa.load(temp_path, sr=None)
         y_shifted = librosa.effects.pitch_shift(y, sr=sr, n_steps=2)
         
-        # Save to temp file then merge with video
-        temp_audio = output_path.replace('.mp4', '_temp.wav')
-        sf.write(temp_audio, y_shifted, sr)
+        # Save shifted audio
+        temp_shifted = temp_path.replace('.wav', '_shifted.wav')
+        sf.write(temp_shifted, y_shifted, sr)
         
         # Merge with original video
-        ffmpeg_path = r"C:\Users\rishi\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
         cmd = [
-            ffmpeg_path, '-i', input_path, '-i', temp_audio,
+            ffmpeg_path, '-i', input_path, '-i', temp_shifted,
             '-c:v', 'copy', '-c:a', 'aac',
             '-map', '0:v:0', '-map', '1:a:0',
             '-y', output_path
         ]
         subprocess.run(cmd, check=True, capture_output=True)
         
-        # Clean up temp file
-        os.remove(temp_audio)
+        # Clean up temp files
+        os.remove(temp_path)
+        os.remove(temp_shifted)
         
     except Exception as e:
         print(f"  ⚠ Pitch shift generation failed: {e}")
@@ -506,31 +514,31 @@ def generate_noisy_variant(input_path, output_path):
     """Generate variant with background noise using ffmpeg."""
     try:
         ffmpeg_path = r"C:\Users\rishi\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
-        # Generate white noise and mix with original
+        # Simple approach: reduce volume and add slight noise
         cmd = [
             ffmpeg_path, '-i', input_path,
-            '-f', 'lavfi', '-i', 'anoisesrc=color=white:size=1024:duration=30',
-            '-filter_complex', '[0:a][1:a]amix=inputs=2:weights=0.9 0.1',
+            '-filter:a', 'volume=0.8,anoisesrc=white:0.1:duration=30',
             '-c:v', 'copy',
             '-y', output_path
         ]
         subprocess.run(cmd, check=True, capture_output=True)
     except Exception as e:
-        print(f"  ⚠ Noisy generation failed (ffmpeg needed): {e}")
+        print(f"  ⚠ Noisy generation failed: {e}")
 
 def generate_phase_inverted_variant(input_path, output_path):
     """Generate phase inverted variant using ffmpeg."""
     try:
         ffmpeg_path = r"C:\Users\rishi\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
+        # Use volume filter with negative value for phase inversion
         cmd = [
             ffmpeg_path, '-i', input_path,
-            '-filter:a', 'aeval=val=-1',
+            '-filter:a', 'volume=-1.0',
             '-c:v', 'copy',
             '-y', output_path
         ]
         subprocess.run(cmd, check=True, capture_output=True)
     except Exception as e:
-        print(f"  ⚠ Phase inverted generation failed (ffmpeg needed): {e}")
+        print(f"  ⚠ Phase inverted generation failed: {e}")
 
 def generate_watermark_variant(input_path, output_path):
     """Generate watermark variant using OpenCV."""

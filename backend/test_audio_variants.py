@@ -13,7 +13,7 @@ def test_audio_variants():
     """Test audio fingerprinting on generated variants."""
     
     original = r"c:\Users\rishi\Documents\GitHub\-TeamId-_RRR_ACMNexus26\assets\videos\EVERTON 3-0 CHELSEA  Premier League highlights - Everton Football Club (720p, h264, youtube).mp4"
-    pirated_dir = r"c:\Users\rishi\Documents\GitHub\-TeamId-_RRR_ACMNexus26\assets\videos\pirated\EVERTON_3-0_CHELSEA__Premier_League_highlights_-_Everton_Football_Club_(720p,_h264,_youtube)"
+    pirated_dir = r"c:\Users\rishi\Documents\GitHub\-TeamId-_RRR_ACMNexus26\assets\videos\pirated\EVERTON_3_0_CHELSEA__Premier_League_highlights___Everton_Football_Club_(720p,_h264,_youtube)"
     
     # Test only audio variants
     audio_variants = [
