@@ -54,6 +54,12 @@ class DualModeEngine:
         self.matcher = VideoMatcher(**matcher_params)
         self._local_cache = {}
         self.degraded_threshold = 90.0
+        
+        # Detection logic parameters (tuned for perceptual robustness)
+        self.bias = -55.0
+        self.video_weight = 0.9
+        self.audio_weight = 0.35
+        self.sigmoid_steepness = 0.08
 
     @staticmethod
     def _cache_key(video_path: str, mode: str) -> str:
@@ -126,8 +132,8 @@ class DualModeEngine:
             fused_score = video_confidence
 
         # Perceptron-style activation over confidence features
-        z = (-55.0) + (0.9 * video_confidence) + (0.35 * audio_confidence) + (5.0 if not audio_available else 0.0)
-        probability = 1.0 / (1.0 + math.exp(-0.08 * z))
+        z = (self.bias) + (self.video_weight * video_confidence) + (self.audio_weight * audio_confidence) + (5.0 if not audio_available else 0.0)
+        probability = 1.0 / (1.0 + math.exp(-self.sigmoid_steepness * z))
         pattern_score = max(fused_score, probability * 100.0)
 
         adaptive_threshold = self.matcher.threshold
@@ -197,7 +203,8 @@ class DualModeEngine:
         if mode in ['video', 'dual'] and suspect['video_hashes'] and protected['video_hashes']:
             video_result = self.matcher.match_video_sequences(
                 suspect['video_hashes'],
-                protected['video_hashes']
+                protected['video_hashes'],
+                use_sliding_window=True
             )
             result['video_confidence'] = video_result['confidence_score']
             result['details']['video'] = video_result
@@ -207,7 +214,8 @@ class DualModeEngine:
         if mode in ['audio', 'dual'] and suspect['audio_hashes'] and protected['audio_hashes']:
             audio_result = self.matcher.match_video_sequences(
                 suspect['audio_hashes'],
-                protected['audio_hashes']
+                protected['audio_hashes'],
+                use_sliding_window=True
             )
             result['audio_confidence'] = audio_result['confidence_score']
             result['details']['audio'] = audio_result

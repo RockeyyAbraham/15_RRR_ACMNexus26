@@ -108,5 +108,27 @@ class RedisManager:
             logging.error(f"Failed to get recent detections from Redis: {e}")
             return []
 
+    def set_cache(self, key: str, value, ttl: int = 3600):
+        """Set a generic cache value."""
+        if not self.client:
+            return False
+        try:
+            self.client.setex(key, ttl, json.dumps(value))
+            return True
+        except Exception as e:
+            logging.error(f"Failed to set cache: {e}")
+            return False
+
+    def get_cache(self, key: str):
+        """Get a generic cache value."""
+        if not self.client:
+            return None
+        try:
+            data = self.client.get(key)
+            return json.loads(data) if data else None
+        except Exception as e:
+            logging.error(f"Failed to get cache: {e}")
+            return None
+
 # Singleton instance
 redis_manager = RedisManager()

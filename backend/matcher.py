@@ -88,33 +88,22 @@ class VideoMatcher:
         
         return is_match, similarity
     
-    def match_video_sequences(self, suspect_hashes: List[str], protected_hashes: List[str]) -> Dict:
+    def match_video_sequences(self, suspect_hashes: List[str], protected_hashes: List[str], 
+                              use_sliding_window: bool = False) -> Dict:
         """
         Match a suspect video sequence against a protected video sequence.
         
         Args:
             suspect_hashes: List of pHashes from suspect video
             protected_hashes: List of pHashes from protected video
+            use_sliding_window: If True, uses sliding window for suspect clips
             
         Returns:
-            Dictionary with match results:
-            {
-                'is_match': bool,
-                'confidence_score': float,
-                'matches': int,
-                'total_comparisons': int,
-                'match_percentage': float,
-                'best_similarity': float,
-                'worst_similarity': float,
-                'average_similarity': float
-            }
-            
-        Example:
-            >>> matcher = VideoMatcher()
-            >>> result = matcher.match_video_sequences(suspect, protected)
-            >>> if result['is_match']:
-            ...     print(f"PIRACY DETECTED! Confidence: {result['confidence_score']:.1f}%")
+            Dictionary with match results
         """
+        if use_sliding_window and len(suspect_hashes) < len(protected_hashes) * 0.8:
+            return self.sliding_window_match(suspect_hashes, protected_hashes)
+
         if not suspect_hashes or not protected_hashes:
             return {
                 'is_match': False,
