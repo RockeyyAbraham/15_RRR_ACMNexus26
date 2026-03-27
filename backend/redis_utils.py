@@ -7,7 +7,10 @@ import os
 import json
 import logging
 from typing import Optional, List, Dict, Any
-import redis
+try:
+    import redis
+except ImportError:
+    redis = None
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +22,11 @@ class RedisManager:
         self.redis_port = int(os.getenv("REDIS_PORT", 6379))
         self.redis_db = int(os.getenv("REDIS_DB", 0))
         self.redis_password = os.getenv("REDIS_PASSWORD", None)
+
+        if redis is None:
+            logger.warning("redis package not installed. Running without Redis cache.")
+            self.redis_client = None
+            return
 
         # Try to connect to Redis
         try:
