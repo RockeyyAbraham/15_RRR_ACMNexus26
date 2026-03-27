@@ -1,0 +1,20 @@
+# Ignore video files
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.flv
+*.wmv
+
+# Ignore models or large binaries if any
+*.h5
+*.pth
+*.onnx
+
+# Ignore python caches
+__pycache__/
+*.pyc
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
