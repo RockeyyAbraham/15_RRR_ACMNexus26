@@ -5,6 +5,7 @@ Tests all features with real Formula 1 video and pirated versions.
 
 import os
 import sys
+import subprocess
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from engines.hash_engine import VideoHashEngine
 from engines.matcher import VideoMatcher
@@ -325,7 +326,16 @@ def generate_missing_variants(original_path, pirated_dir):
         ("mirrored.mp4", "Mirrored"),
         ("rotate.mp4", "Rotation"),
         ("stretch.mp4", "Aspect Ratio Stretch"),
-        ("watermark.mp4", "Watermark")
+        ("watermark.mp4", "Watermark"),
+        # Audio variants
+        ("lowbitrate.mp4", "Low Bitrate (64kbps)"),
+        ("pitchshift.mp4", "Pitch Shifted (+2 semitones)"),
+        ("speed_audio.mp4", "Speed Change (1.5x audio)"),
+        ("mono.mp4", "Mono Conversion"),
+        ("equalized.mp4", "Bass Boosted"),
+        ("trimmed.mp4", "Trimmed (30s audio)"),
+        ("noisy.mp4", "Background Noise"),
+        ("phase_inverted.mp4", "Phase Inverted")
     ]
     
     missing_variants = [v for v in required_variants if v[0] not in existing_variants]
@@ -364,6 +374,23 @@ def generate_missing_variants(original_path, pirated_dir):
                 generate_stretch_variant(original_path, output_path)
             elif variant_file == "watermark.mp4":
                 generate_watermark_variant(original_path, output_path)
+            # Audio variants
+            elif variant_file == "lowbitrate.mp4":
+                generate_lowbitrate_variant(original_path, output_path)
+            elif variant_file == "pitchshift.mp4":
+                generate_pitchshift_variant(original_path, output_path)
+            elif variant_file == "speed_audio.mp4":
+                generate_speed_audio_variant(original_path, output_path)
+            elif variant_file == "mono.mp4":
+                generate_mono_variant(original_path, output_path)
+            elif variant_file == "equalized.mp4":
+                generate_equalized_variant(original_path, output_path)
+            elif variant_file == "trimmed.mp4":
+                generate_trimmed_variant(original_path, output_path)
+            elif variant_file == "noisy.mp4":
+                generate_noisy_variant(original_path, output_path)
+            elif variant_file == "phase_inverted.mp4":
+                generate_phase_inverted_variant(original_path, output_path)
             else:
                 print(f"  ⚠ Unknown variant: {description}")
                 continue
@@ -372,6 +399,130 @@ def generate_missing_variants(original_path, pirated_dir):
             
         except Exception as e:
             print(f"  ✗ Failed to generate {description}: {e}")
+
+def generate_lowbitrate_variant(input_path, output_path):
+    """Generate low bitrate audio variant using ffmpeg."""
+    try:
+        cmd = [
+            'ffmpeg', '-i', input_path,
+            '-c:a', 'aac', '-b:a', '64k',
+            '-c:v', 'copy',  # Keep video unchanged
+            '-y', output_path
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+    except Exception as e:
+        print(f"  ⚠ Low bitrate generation failed (ffmpeg needed): {e}")
+
+def generate_pitchshift_variant(input_path, output_path):
+    """Generate pitch shifted variant using librosa."""
+    try:
+        import librosa
+        import soundfile as sf
+        
+        # Extract audio
+        y, sr = librosa.load(input_path, sr=None)
+        
+        # Pitch shift (+2 semitones)
+        y_shifted = librosa.effects.pitch_shift(y, sr=sr, n_steps=2)
+        
+        # Save to temp file then merge with video
+        temp_audio = output_path.replace('.mp4', '_temp.wav')
+        sf.write(temp_audio, y_shifted, sr)
+        
+        # Merge with original video
+        cmd = [
+            'ffmpeg', '-i', input_path, '-i', temp_audio,
+            '-c:v', 'copy', '-c:a', 'aac',
+            '-map', '0:v:0', '-map', '1:a:0',
+            '-y', output_path
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+        
+        # Clean up temp file
+        os.remove(temp_audio)
+        
+    except Exception as e:
+        print(f"  ⚠ Pitch shift generation failed: {e}")
+
+def generate_speed_audio_variant(input_path, output_path):
+    """Generate speed changed audio variant using ffmpeg."""
+    try:
+        cmd = [
+            'ffmpeg', '-i', input_path,
+            '-filter:a', 'atempo=1.5',  # 1.5x speed
+            '-c:v', 'copy',
+            '-y', output_path
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+    except Exception as e:
+        print(f"  ⚠ Speed audio generation failed (ffmpeg needed): {e}")
+
+def generate_mono_variant(input_path, output_path):
+    """Generate mono audio variant using ffmpeg."""
+    try:
+        cmd = [
+            'ffmpeg', '-i', input_path,
+            '-ac', '1',  # Convert to mono
+            '-c:v', 'copy',
+            '-y', output_path
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+    except Exception as e:
+        print(f"  ⚠ Mono generation failed (ffmpeg needed): {e}")
+
+def generate_equalized_variant(input_path, output_path):
+    """Generate equalized (bass boost) variant using ffmpeg."""
+    try:
+        cmd = [
+            'ffmpeg', '-i', input_path,
+            '-filter:a', 'equalizer=f=100:width_type=h:width=100:g=10',  # Bass boost
+            '-c:v', 'copy',
+            '-y', output_path
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+    except Exception as e:
+        print(f"  ⚠ Equalized generation failed (ffmpeg needed): {e}")
+
+def generate_trimmed_variant(input_path, output_path):
+    """Generate trimmed (30 second) variant using ffmpeg."""
+    try:
+        cmd = [
+            'ffmpeg', '-i', input_path,
+            '-t', '30',  # First 30 seconds
+            '-c', 'copy',
+            '-y', output_path
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+    except Exception as e:
+        print(f"  ⚠ Trimmed generation failed (ffmpeg needed): {e}")
+
+def generate_noisy_variant(input_path, output_path):
+    """Generate variant with background noise using ffmpeg."""
+    try:
+        # Generate white noise and mix with original
+        cmd = [
+            'ffmpeg', '-i', input_path,
+            '-f', 'lavfi', '-i', 'anoisesrc=color=white:size=1024:duration=30',
+            '-filter_complex', '[0:a][1:a]amix=inputs=2:weights=0.9 0.1',
+            '-c:v', 'copy',
+            '-y', output_path
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+    except Exception as e:
+        print(f"  ⚠ Noisy generation failed (ffmpeg needed): {e}")
+
+def generate_phase_inverted_variant(input_path, output_path):
+    """Generate phase inverted variant using ffmpeg."""
+    try:
+        cmd = [
+            'ffmpeg', '-i', input_path,
+            '-filter:a', 'aeval=val=-1',
+            '-c:v', 'copy',
+            '-y', output_path
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+    except Exception as e:
+        print(f"  ⚠ Phase inverted generation failed (ffmpeg needed): {e}")
 
 def generate_watermark_variant(input_path, output_path):
     """Generate watermark variant using OpenCV."""
@@ -707,7 +858,16 @@ def test_dual_engine_primary():
         ("mirrored.mp4", "Mirrored"),
         ("rotate.mp4", "Rotation"),
         ("stretch.mp4", "Aspect Ratio Stretch"),
-        ("watermark.mp4", "Watermark")
+        ("watermark.mp4", "Watermark"),
+        # Audio variants
+        ("lowbitrate.mp4", "Low Bitrate (64kbps)"),
+        ("pitchshift.mp4", "Pitch Shifted (+2 semitones)"),
+        ("speed_audio.mp4", "Speed Change (1.5x audio)"),
+        ("mono.mp4", "Mono Conversion"),
+        ("equalized.mp4", "Bass Boosted"),
+        ("trimmed.mp4", "Trimmed (30s audio)"),
+        ("noisy.mp4", "Background Noise"),
+        ("phase_inverted.mp4", "Phase Inverted")
     ]
 
     for filename, description in pirated_videos:
