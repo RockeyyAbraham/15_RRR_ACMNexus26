@@ -5,6 +5,8 @@ Tests frame extraction, pHash generation, and matching logic.
 
 import sys
 import os
+import time
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from hash_engine import VideoHashEngine
 from matcher import VideoMatcher
 
