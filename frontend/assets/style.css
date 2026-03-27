@@ -1,8 +1,9 @@
 /* Hacker/Cyber style overrides */
-@import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700;800&display=swap');
 
 html, body, [class*="css"] {
     font-family: 'Roboto Mono', monospace !important;
+    background-color: #121415 !important;
 }
 
 /* Base text overrides */
@@ -10,27 +11,8 @@ p, span, div {
     font-family: 'Roboto Mono', monospace !important;
 }
 
-/* Primary Button Highlighting */
-.stButton > button {
-    background-color: #CCFF00 !important;
-    color: #121415 !important;
-    font-weight: 800 !important;
-    border: none !important;
-    border-radius: 4px !important;
-    height: 3.5rem !important;
-    width: 100% !important;
-    font-size: 1.1em !important;
-    letter-spacing: 1px;
-}
-
-.stButton > button:hover {
-    background-color: #aacc00 !important;
-    color: #121415 !important;
-}
-
-.stButton > button:focus {
-    box-shadow: 0 0 10px #CCFF00 !important;
-}
+/* Base UI Hiding */
+header { display: none !important; }
 
 /* Custom Nav/Header */
 .navbar {
@@ -50,100 +32,139 @@ p, span, div {
     border-bottom: 2px solid #CCFF00;
     padding-bottom: 10px;
 }
-.navbar .tab:hover {
-    color: #FFF;
-    cursor: pointer;
+.navbar .tab {
+    padding-bottom: 10px;
+    border-bottom: 2px solid transparent;
 }
 
-/* Log Cards Customization */
-.log-card {
-    background-color: #1C1D1F;
-    border-left: 2px solid #3a3b3c;
-    padding: 15px;
-    height: 110px;
-    font-size: 0.85em;
-    color: #bbb;
+/* Status Indicator */
+.status-indicator {
+    display:inline-block; 
+    width:10px; 
+    height:10px; 
+    border-radius:50%; 
+    background-color:#CCFF00; 
+    margin-right:8px;
 }
 
-.log-card.blue-bar { border-left-color: #2b70c9; }
-.log-card.yellow-bar { border-left-color: #CCFF00; }
-.log-card.grey-bar { border-left-color: #555; }
+/* Primary Button Highlighting */
+div[data-testid="stButton"] button[kind="primary"] {
+    background-color: #CCFF00 !important;
+    color: #121415 !important;
+    font-weight: 800 !important;
+    border: none !important;
+    border-radius: 4px !important;
+    height: 3.5rem !important;
+    width: 100% !important;
+    font-size: 1.1em !important;
+    letter-spacing: 1px;
+}
+div[data-testid="stButton"] button[kind="primary"]:hover {
+    background-color: #aacc00 !important;
+}
 
-/* Metrics */
-.metric-container {
-    background-color: #1C1D1F;
-    padding: 20px;
+/* Secondary ghost button */
+div[data-testid="stButton"] button[kind="secondary"] {
+    background-color: transparent !important;
+    color: #555 !important;
+    font-weight: 800 !important;
+    border: none !important;
+    height: 3.5rem !important;
+    width: 100% !important;
+    font-size: 0.9em !important;
+    letter-spacing: 1px;
+}
+div[data-testid="stButton"] button[kind="secondary"]:hover {
+    color: #888 !important;
+}
+
+/* Container Boxes */
+.container-box {
+    background-color: #1a1c1e;
+    border: 1px solid #2a2c2e;
     border-radius: 4px;
-    margin-bottom: 15px;
-}
-.metric-title {
-    font-size: 0.75em;
-    color: #888;
-    letter-spacing: 1.5px;
-    margin-bottom: 8px;
-}
-.metric-value {
-    font-size: 2.5em;
-    font-weight: 800;
-    color: #CCFF00;
-    line-height: 1;
+    padding: 20px;
+    height: 100%;
+    margin-bottom: 5px;
 }
 
-/* Progress bars */
-.progress-container {
-    margin-top: 5px;
-}
-.progress-label {
-    display: flex;
-    justify-content: space-between;
+/* Badges */
+.badge-yellow {
+    display: inline-block;
+    background-color: transparent;
+    color: #CCFF00;
     font-size: 0.7em;
-    margin-bottom: 8px;
-    color: #8c8c8c;
+    font-weight: 800;
+    letter-spacing: 1px;
+    padding: 5px 0;
+    border-left: 2px solid #CCFF00;
+    padding-left: 10px;
+    margin-bottom: 10px;
+}
+.badge-red {
+    display: inline-block;
+    background-color: transparent;
+    color: #ffa8a8;
+    font-size: 0.7em;
+    font-weight: 800;
+    letter-spacing: 1px;
+    padding: 5px 15px;
+    border-left: 2px solid #ff4d4d;
+    background-color: #8b0000;
+    margin-bottom: 10px;
+}
+
+/* Info Metrics */
+.info-metric {
+    background-color: #121415;
+    padding: 10px;
+    flex: 1;
+    border: 1px solid #2a2c2e;
+    border-radius: 2px;
+}
+.info-metric .title {
+    font-size: 0.6em;
+    color: #666;
+    margin-bottom: 5px;
     font-weight: bold;
     letter-spacing: 1px;
 }
-.progress-label span.ready { color: #CCFF00; }
-.progress-label span.pending { color: #8c8c8c; }
-
-.progress-bar-bg {
-    height: 6px;
-    background-color: #222;
-    border-radius: 0px;
+.info-metric .val {
+    font-size: 0.85em;
+    color: #FFF;
+    font-weight: bold;
 }
-.progress-bar-fill.yellow {
+.info-metric .val.red { color: #ff6b6b; }
+
+/* Bottom Metrics */
+.bottom-metric {
+    background-color: #1a1c1e;
+    border: 1px solid #2a2c2e;
+    border-radius: 4px;
+    padding: 20px;
     height: 100%;
-    width: 60%;
-    background-color: #CCFF00;
 }
-.progress-bar-fill.blue {
-    height: 100%;
-    width: 20%;
-    background-color: #2b70c9;
+.bottom-metric.optimal {
+    border-top: 2px solid #2b70c9;
+    border-left: 2px solid #2b70c9;
 }
+.bottom-metric .title {
+    font-size: 0.65em;
+    color: #888;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+.bottom-metric .val {
+    font-size: 2em;
+    font-weight: 800;
+}
+.bottom-metric .val.yellow { color: #CCFF00; }
+.bottom-metric .val.blue { color: #8daeff; }
+.bottom-metric .val.white { color: #FFF; }
 
-/* Base UI Hiding */
-header { display: none !important; }
-
-/* Custom Inputs to look like the design */
-.stTextInput input {
-    background-color: #121415 !important;
-    color: #FFF !important;
-    border: 1px solid #333 !important;
-    border-radius: 2px !important;
-    padding: 18px 15px !important;
-}
-.stTextInput input:focus {
-    border-color: #CCFF00 !important;
-    box-shadow: none !important;
-}
-
-/* File Uploader styling */
-.stFileUploader > div > div {
-    background-color: #121415 !important;
-    border: 1px dashed #444 !important;
-    border-radius: 4px !important;
-    min-height: 250px !important;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+/* Chart Overrides */
+[data-testid="stVegaLiteChart"] {
+    margin-top: -15px;
 }
