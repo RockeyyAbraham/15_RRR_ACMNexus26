@@ -49,11 +49,20 @@ export default function IngestPage() {
   );
 
   const handleSubmit = async () => {
+    console.log("handleSubmit called, file:", file);
+    
     if (!file) {
+      console.error("No file in handleSubmit");
       setError("Upload a source video before generating a fingerprint.");
       setMessage(null);
       return;
     }
+
+    console.log("File details:", {
+      name: file.name,
+      size: file.size,
+      type: file.type
+    });
 
     setLoading(true);
     setError(null);

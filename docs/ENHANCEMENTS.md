@@ -308,15 +308,15 @@ python backend/test_pipeline_enhanced.py path/to/video.mp4
 
 ## 🎯 Next Steps
 
-### Integration with FastAPI
-The enhanced pipeline is ready for FastAPI integration:
+### Integration with Flask
+The enhanced pipeline is ready for Flask integration:
 
 ```python
-from fastapi import FastAPI, UploadFile
+from flask import Flask, request
 from hash_engine import VideoHashEngine
 from matcher import VideoMatcher
 
-app = FastAPI()
+app = Flask(__name__)
 
 # Initialize with enhanced features
 engine = VideoHashEngine(
@@ -331,8 +331,9 @@ matcher = VideoMatcher(
     consistency_threshold=0.8
 )
 
-@app.post("/upload/protected")
-async def upload_protected(file: UploadFile):
+@app.route("/upload/protected", methods=["POST"])
+def upload_protected():
+    file = request.files["video"]
     # Save and process with enhanced engine
     hashes, metadata = engine.hash_video(file_path)
     return {
@@ -341,8 +342,9 @@ async def upload_protected(file: UploadFile):
         "processing_time": metadata['processing_time_seconds']
     }
 
-@app.post("/detect")
-async def detect_piracy(file: UploadFile):
+@app.route("/detect", methods=["POST"])
+def detect_piracy():
+    file = request.files["video"]
     suspect_hashes, _ = engine.hash_video(file_path)
     
     # Use statistical confidence matching
@@ -397,6 +399,6 @@ The enhanced Sentinel video pipeline now features:
 4. **Sliding window matching** for temporal localization
 5. **Statistical confidence** for false positive reduction
 
-All features have been thoroughly tested and verified. The pipeline is production-ready and ready for integration with the FastAPI backend and Flutter frontend.
+All features have been thoroughly tested and verified. The pipeline is production-ready and ready for integration with the Flask backend and Flutter frontend.
 
 **Status:** ✅ COMPLETE AND VERIFIED

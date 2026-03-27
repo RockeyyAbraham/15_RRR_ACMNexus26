@@ -25,7 +25,7 @@ Live sports piracy represents a **$28 billion annual loss** to content rights-ho
 
 **Sentinel** is a real-time, multi-modal content fingerprinting engine that collapses this enforcement window from hours to **under 90 seconds**. The system ingests live video streams, extracts perceptual hashes (pHash) from video frames and audio spectrograms, matches them against a protected content database with 85%+ confidence thresholds, and auto-generates legally compliant DMCA takedown notices.
 
-Unlike traditional reactive systems, Sentinel operates **during** the live event, enabling rights-holders to neutralize piracy while the content still holds commercial value. The system is built on a Python/FastAPI backend for high-throughput fingerprinting and a Flutter web client for real-time monitoring, designed for rapid deployment in a 16-hour hackathon sprint.
+Unlike traditional reactive systems, Sentinel operates **during** the live event, enabling rights-holders to neutralize piracy while the content still holds commercial value. The system is built on a Python/Flask backend for high-throughput fingerprinting and a Flutter web client for real-time monitoring, designed for rapid deployment in a 16-hour hackathon sprint.
 
 **Core Innovation:** Sentinel isn't trying to be YouTube Content ID. It's solving a different problem—**speed over scale**, **live detection over batch processing**, **90-second response over 6-hour lag**.
 
@@ -107,7 +107,7 @@ Sentinel partitions into three functional layers, optimized for a 16-hour build 
 └─────────────────────────────────────────────────────────────┘
                              ↕ WebSocket + REST
 ┌─────────────────────────────────────────────────────────────┐
-│                   PYTHON FASTAPI BACKEND                     │
+│                    PYTHON FLASK BACKEND                      │
 │  ┌──────────────┐  ┌─────────────┐  ┌──────────────────┐   │
 │  │  Hash Engine │  │  Matching   │  │  DMCA Generator  │   │
 │  │  (pHash +    │→ │  Algorithm  │→ │  (ReportLab)     │   │
@@ -186,12 +186,12 @@ Sentinel partitions into three functional layers, optimized for a 16-hour build 
 
 ---
 
-#### 2. **Backend: Python FastAPI**
+#### 2. **Backend: Python Flask**
 
-**Why FastAPI Over Django:**
-- Built-in async/await for WebSocket support
+**Why Flask Over Django:**
+- Lightweight and fast to ship
 - No ORM overhead (we're using raw SQLite)
-- Auto-generated OpenAPI docs (free API testing UI)
+- Simple route handlers for a hackathon timeline
 
 **Endpoints Required (6 total):**
 
@@ -641,19 +641,19 @@ def generate_dmca_notice(detection_id):
 | Layer | Technology | Rationale |
 |-------|------------|-----------|
 | **Frontend** | Flutter (Web) | Cross-platform, you already know it, built-in WebSocket support |
-| **Backend** | Python + FastAPI | Async/await native, lighter than Django, perfect for 16-hour sprint |
+| **Backend** | Python + Flask | Lightweight, flexible, and perfect for 16-hour sprint |
 | **Video Processing** | OpenCV + ffmpeg-python | Industry standard, battle-tested |
 | **Perceptual Hashing** | ImageHash (Python) | Wraps PIL, dead-simple API, exactly what we need |
 | **Audio Analysis** | librosa | De facto standard for audio ML, robust spectrogram generation |
 | **Database** | SQLite | Zero setup, file-based, sufficient for demo |
 | **PDF Generation** | ReportLab | Python-native, no external dependencies |
-| **WebSocket** | FastAPI WebSocket | Built-in, no extra libraries needed |
+| **WebSocket** | Flask-Sock | Native WebSocket route support with minimal setup |
 
 ### Dependency Installation
 
 **Backend (Python 3.10+):**
 ```bash
-pip install fastapi uvicorn opencv-python imagehash pillow librosa ffmpeg-python reportlab sqlalchemy
+pip install flask flask-sock opencv-python imagehash pillow librosa ffmpeg-python reportlab sqlalchemy
 ```
 
 **Frontend (Flutter 3.19+):**
@@ -746,7 +746,7 @@ They already have enterprise solutions. You're targeting the **underserved middl
 | Hour | Task | Owner | Deliverable | Blocker Risk |
 |------|------|-------|-------------|--------------|
 | **0–1** | Environment setup, test all dependencies | Everyone | Working dev env | **HIGH** (librosa on Windows) |
-| **1–2** | Backend skeleton: FastAPI boilerplate, DB schema | You | `/health` endpoint responds | Low |
+| **1–2** | Backend skeleton: Flask boilerplate, DB schema | You | `/health` endpoint responds | Low |
 | **2–4** | Hash extraction logic: `POST /upload/protected` | You | Upload video → generate hashes | **HIGH** (ffmpeg path issues) |
 | **4–6** | Matching algorithm: `POST /upload/suspect` | You | Compare hashes, return confidence | **HIGH** (threshold tuning) |
 | **6–7** | Database integration: store protected + detections | You | End-to-end: upload → detect → store | Medium |
@@ -799,7 +799,7 @@ They already have enterprise solutions. You're targeting the **underserved middl
 - **Probability:** 30%
 - **Impact:** Medium (demo still works, just less impressive)
 - **Mitigation:**
-  - CORS configuration (FastAPI + Flutter web issue)
+    - CORS configuration (Flask + Flutter web issue)
   - Fallback: Manual page refresh to fetch new detections
 
 **Risk 4: Team Member MIA**
@@ -915,7 +915,7 @@ Now go build it. Test your dependencies in Hour 0. Hit the Hour 8 checkpoint. An
 ```
 sentinel/
 ├── backend/
-│   ├── main.py              # FastAPI app
+│   ├── main.py              # Flask app
 │   ├── hash_engine.py       # pHash + spectrogram logic
 │   ├── matcher.py           # Hamming distance comparison
 │   ├── dmca_generator.py    # ReportLab PDF creation

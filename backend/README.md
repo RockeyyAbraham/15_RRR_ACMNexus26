@@ -4,10 +4,9 @@ Video fingerprinting and piracy detection engine.
 
 ## Runtime Modes
 
-- Flask mode (legacy, existing): `python api/main.py`
-- FastAPI mode (Northstar-aligned): `uvicorn api.fastapi_main:app --host 0.0.0.0 --port 8000 --reload`
+- Flask mode: `python api/main.py`
 
-FastAPI mode mounts the existing Flask REST API and serves native WebSocket updates at `/live`.
+Flask serves both REST endpoints and WebSocket updates at `/live`.
 
 ## Core Components
 

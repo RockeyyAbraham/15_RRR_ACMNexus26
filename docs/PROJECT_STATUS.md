@@ -120,7 +120,6 @@ sentinel/
 ├── backend/
 │   ├── api/
 │   │   ├── main.py                    # Flask REST API (1224 lines)
-│   │   └── fastapi_main.py            # FastAPI alternative
 │   ├── engines/
 │   │   ├── hash_engine.py             # Video fingerprinting
 │   │   ├── audio_engine.py            # Audio fingerprinting

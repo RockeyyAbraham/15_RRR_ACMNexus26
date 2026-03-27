@@ -1,6 +1,4 @@
 flask
-fastapi
-uvicorn[standard]
 flask-sock
 opencv-python
 imagehash
@@ -15,3 +13,4 @@ flask-cors
 requests
 soundfile
 fakeredis
+yt-dlp

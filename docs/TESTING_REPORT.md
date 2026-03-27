@@ -290,7 +290,7 @@ Consider implementing:
 4. ✅ Comprehensive logging and monitoring
 
 **Next Steps:**
-1. Implement two-tier detection in FastAPI backend
+1. Implement two-tier detection in Flask backend
 2. Create manual review dashboard
 3. Set up automated DMCA workflow for high-confidence matches
 4. Monitor false positive/negative rates in production

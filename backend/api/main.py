@@ -3,6 +3,13 @@ Sentinel Backend Central Hub - Flask REST & WebSocket API.
 Provides asynchronous fingerprinting, candidate triage, detection, and DMCA generation.
 """
 
+import sys
+from pathlib import Path
+
+# Fix import paths - add backend directory to Python path
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BACKEND_DIR))
+
 import os
 import json
 import uuid
@@ -11,7 +18,6 @@ import logging
 import sqlite3
 import threading
 from datetime import datetime
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
@@ -268,6 +274,7 @@ def resolve_candidate_media(url: str) -> Path | None:
     Supports:
     - local absolute/relative file path
     - direct media URL (.mp4/.mov/.mkv/.webm/.m4v)
+    - streaming platforms via yt-dlp (YouTube, Twitch, Facebook, Twitter, etc.)
     """
     media_ext = (".mp4", ".mov", ".mkv", ".webm", ".m4v")
 
@@ -280,6 +287,26 @@ def resolve_candidate_media(url: str) -> Path | None:
     if parsed.scheme not in ("http", "https"):
         return None
 
+    # Try yt-dlp for streaming platforms (YouTube, Twitch, etc.)
+    try:
+        from engines.video_downloader import VideoDownloader
+        downloader = VideoDownloader(output_dir=str(TEMP_DIR))
+        
+        platform = downloader.identify_platform(url)
+        if platform and platform not in ("unknown", "direct"):
+            logger.info(f"Attempting yt-dlp download from {platform}: {url}")
+            downloaded_path, metadata = downloader.download(url)
+            if downloaded_path and downloaded_path.exists():
+                logger.info(f"Successfully downloaded: {downloaded_path}")
+                return downloaded_path
+            else:
+                logger.warning(f"yt-dlp download failed: {metadata.get('error', 'Unknown error')}")
+    except ImportError:
+        logger.warning("VideoDownloader not available, falling back to direct download")
+    except Exception as e:
+        logger.warning(f"yt-dlp download error: {e}")
+
+    # Fallback: Direct download for direct video URLs
     if not parsed.path.lower().endswith(media_ext):
         return None
 
@@ -405,20 +432,21 @@ def init_db():
 def process_protected_video(video_path: Path, title: str, league: str, progress_cb=None, cancel_cb=None):
     start = time.perf_counter()
     local_hash_engine, _, local_audio_engine = get_media_engines()
+    video_path_str = str(video_path)
 
     if progress_cb:
         progress_cb("hashing_video")
     if cancel_cb and cancel_cb():
         raise RuntimeError("Job cancelled")
 
-    video_hashes, video_metadata = local_hash_engine.hash_video(video_path)
+    video_hashes, video_metadata = local_hash_engine.hash_video(video_path_str)
 
     if progress_cb:
         progress_cb("hashing_audio")
     if cancel_cb and cancel_cb():
         raise RuntimeError("Job cancelled")
 
-    audio_hash = local_audio_engine.extract_audio_hash(video_path)
+    audio_hash = local_audio_engine.extract_audio_hash(video_path_str)
 
     if progress_cb:
         progress_cb("persisting")
@@ -471,20 +499,21 @@ def process_protected_video(video_path: Path, title: str, league: str, progress_
 def process_suspect_video(video_path: Path, stream_url: str, progress_cb=None, cancel_cb=None):
     start = time.perf_counter()
     local_hash_engine, local_matcher, local_audio_engine = get_media_engines()
+    video_path_str = str(video_path)
 
     if progress_cb:
         progress_cb("hashing_video")
     if cancel_cb and cancel_cb():
         raise RuntimeError("Job cancelled")
 
-    suspect_hashes, suspect_metadata = local_hash_engine.hash_video(video_path)
+    suspect_hashes, suspect_metadata = local_hash_engine.hash_video(video_path_str)
 
     if progress_cb:
         progress_cb("hashing_audio")
     if cancel_cb and cancel_cb():
         raise RuntimeError("Job cancelled")
 
-    suspect_audio_hash = local_audio_engine.extract_audio_hash(video_path)
+    suspect_audio_hash = local_audio_engine.extract_audio_hash(video_path_str)
 
     if progress_cb:
         progress_cb("matching")
