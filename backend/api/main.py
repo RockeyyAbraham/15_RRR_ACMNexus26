@@ -38,6 +38,7 @@ NOTICES_DIR = BACKEND_DIR.parent / "notices"
 AUTO_ACTION_THRESHOLD = float(os.getenv("AUTO_ACTION_THRESHOLD", "85"))
 MANUAL_REVIEW_THRESHOLD = float(os.getenv("MANUAL_REVIEW_THRESHOLD", "75"))
 MAX_ASYNC_WORKERS = int(os.getenv("MAX_ASYNC_WORKERS", "2"))
+MAX_QUEUE_SIZE = int(os.getenv("MAX_QUEUE_SIZE", "20"))
 
 # Initialize engine instances
 hash_engine = VideoHashEngine(frame_sample_rate=10, hash_size=8)
@@ -87,6 +88,8 @@ def create_job(job_type: str, payload: dict):
             "job_id": job_id,
             "job_type": job_type,
             "status": "queued",
+            "stage": "queued",
+            "cancel_requested": False,
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
             "payload": payload,
@@ -107,6 +110,37 @@ def update_job(job_id: str, **updates):
 def get_job(job_id: str):
     with jobs_lock:
         return jobs.get(job_id)
+
+
+def get_active_job_count():
+    with jobs_lock:
+        return sum(1 for j in jobs.values() if j.get("status") in ["queued", "running"]) 
+
+
+def request_job_cancel(job_id: str):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return None
+        if job.get("status") in ["completed", "failed", "cancelled"]:
+            return job
+        job["cancel_requested"] = True
+        if job.get("status") == "queued":
+            job["status"] = "cancelled"
+            job["stage"] = "cancelled"
+        else:
+            job["stage"] = "cancel_requested"
+        job["updated_at"] = datetime.now().isoformat()
+        return job
+
+
+def set_job_stage(job_id: str, stage: str):
+    update_job(job_id, stage=stage)
+
+
+def should_abort(job_id: str):
+    job = get_job(job_id)
+    return bool(job and job.get("cancel_requested"))
 
 
 def classify_detection_tier(score: float):
@@ -154,12 +188,28 @@ def init_db():
     conn.close()
 
 
-def process_protected_video(video_path: Path, title: str, league: str):
+def process_protected_video(video_path: Path, title: str, league: str, progress_cb=None, cancel_cb=None):
     """Core protected-content processing logic used by sync and async routes."""
     start = time.perf_counter()
 
+    if progress_cb:
+        progress_cb("hashing_video")
+    if cancel_cb and cancel_cb():
+        raise RuntimeError("Job cancelled")
+
     video_hashes, video_metadata = hash_engine.hash_video(video_path)
+
+    if progress_cb:
+        progress_cb("hashing_audio")
+    if cancel_cb and cancel_cb():
+        raise RuntimeError("Job cancelled")
+
     audio_hash = audio_engine.extract_audio_hash(video_path)
+
+    if progress_cb:
+        progress_cb("persisting")
+    if cancel_cb and cancel_cb():
+        raise RuntimeError("Job cancelled")
 
     conn = sqlite3.connect(str(DB_PATH))
     cursor = conn.cursor()
@@ -204,12 +254,28 @@ def process_protected_video(video_path: Path, title: str, league: str):
     }
 
 
-def process_suspect_video(video_path: Path, stream_url: str):
+def process_suspect_video(video_path: Path, stream_url: str, progress_cb=None, cancel_cb=None):
     """Core suspect-content processing logic used by sync and async routes."""
     start = time.perf_counter()
 
+    if progress_cb:
+        progress_cb("hashing_video")
+    if cancel_cb and cancel_cb():
+        raise RuntimeError("Job cancelled")
+
     suspect_hashes, suspect_metadata = hash_engine.hash_video(video_path)
+
+    if progress_cb:
+        progress_cb("hashing_audio")
+    if cancel_cb and cancel_cb():
+        raise RuntimeError("Job cancelled")
+
     suspect_audio_hash = audio_engine.extract_audio_hash(video_path)
+
+    if progress_cb:
+        progress_cb("matching")
+    if cancel_cb and cancel_cb():
+        raise RuntimeError("Job cancelled")
 
     protected_ids = redis_manager.get_all_protected_content_ids()
     if not protected_ids:
@@ -348,25 +414,39 @@ def process_suspect_video(video_path: Path, stream_url: str):
 
 def submit_background_job(job_id: str, job_type: str, video_path: Path, payload: dict):
     """Execute fingerprinting work asynchronously and persist status in-memory."""
-    update_job(job_id, status="running")
+    job = get_job(job_id)
+    if not job or job.get("status") == "cancelled":
+        return
+
+    update_job(job_id, status="running", stage="starting", started_at=datetime.now().isoformat())
     try:
         if job_type == "protected_upload":
             result = process_protected_video(
                 video_path=video_path,
                 title=payload.get("title", "Unknown"),
                 league=payload.get("league", "Unknown"),
+                progress_cb=lambda s: set_job_stage(job_id, s),
+                cancel_cb=lambda: should_abort(job_id),
             )
         elif job_type == "suspect_upload":
             result = process_suspect_video(
                 video_path=video_path,
                 stream_url=payload.get("stream_url", "unknown"),
+                progress_cb=lambda s: set_job_stage(job_id, s),
+                cancel_cb=lambda: should_abort(job_id),
             )
         else:
             raise ValueError(f"Unsupported job type: {job_type}")
 
-        update_job(job_id, status="completed", result=result)
+        if should_abort(job_id):
+            update_job(job_id, status="cancelled", stage="cancelled")
+        else:
+            update_job(job_id, status="completed", stage="completed", result=result, completed_at=datetime.now().isoformat())
     except Exception as e:
-        update_job(job_id, status="failed", error=str(e))
+        if "cancelled" in str(e).lower() or should_abort(job_id):
+            update_job(job_id, status="cancelled", stage="cancelled")
+        else:
+            update_job(job_id, status="failed", stage="failed", error=str(e))
     finally:
         try:
             if os.path.exists(video_path):
@@ -440,6 +520,9 @@ def upload_suspect():
 
 @app.route("/upload/protected/async", methods=["POST"])
 def upload_protected_async():
+        if get_active_job_count() >= MAX_QUEUE_SIZE:
+            return jsonify({"error": "Async queue is full. Try again shortly."}), 429
+
     """Queue protected-content hashing in background and return a job handle."""
     if "video" not in request.files:
         return jsonify({"error": "No video file provided"}), 400
@@ -465,6 +548,9 @@ def upload_protected_async():
 
 @app.route("/upload/suspect/async", methods=["POST"])
 def upload_suspect_async():
+        if get_active_job_count() >= MAX_QUEUE_SIZE:
+            return jsonify({"error": "Async queue is full. Try again shortly."}), 429
+
     """Queue suspect-content fingerprinting in background and return a job handle."""
     if "video" not in request.files:
         return jsonify({"error": "No video file provided"}), 400
@@ -491,6 +577,15 @@ def upload_suspect_async():
 def get_job_status(job_id):
     """Get status and result/error for an async fingerprinting job."""
     job = get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(job), 200
+
+
+@app.route("/jobs/<job_id>/cancel", methods=["POST"])
+def cancel_job(job_id):
+    """Request cancellation for a queued or running async job."""
+    job = request_job_cancel(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
     return jsonify(job), 200
@@ -540,7 +635,9 @@ def get_metrics_summary():
                 },
                 "async": {
                     "max_workers": MAX_ASYNC_WORKERS,
+                    "max_queue_size": MAX_QUEUE_SIZE,
                     "tracked_jobs": len(jobs),
+                    "active_jobs": get_active_job_count(),
                 },
             }
         ), 200
@@ -667,7 +764,9 @@ def health_check():
             "engines": engines_status,
             "async": {
                 "max_workers": MAX_ASYNC_WORKERS,
+                "max_queue_size": MAX_QUEUE_SIZE,
                 "tracked_jobs": len(jobs),
+                "active_jobs": get_active_job_count(),
             },
             "timestamp": datetime.now().isoformat(),
         }

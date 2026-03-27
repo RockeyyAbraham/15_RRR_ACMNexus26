@@ -48,6 +48,16 @@ class TestAsyncJobState(unittest.TestCase):
         self.assertEqual(completed["status"], "completed")
         self.assertEqual(completed["result"], {"ok": True})
 
+    def test_active_job_count_and_cancel(self):
+        job_id = api_main.create_job("unit_test_cancel", {"k": "v"})
+        self.assertGreaterEqual(api_main.get_active_job_count(), 1)
+
+        cancelled = api_main.request_job_cancel(job_id)
+        self.assertIsNotNone(cancelled)
+        self.assertTrue(cancelled["cancel_requested"])
+        self.assertEqual(cancelled["status"], "cancelled")
+        self.assertEqual(cancelled["stage"], "cancelled")
+
 
 if __name__ == "__main__":
     unittest.main()
