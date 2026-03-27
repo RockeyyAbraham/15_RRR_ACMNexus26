@@ -14,6 +14,7 @@ from flask_sock import Sock
 from engines.hash_engine import VideoHashEngine
 from engines.matcher import VideoMatcher
 from engines.ai_engine import SentinelAI
+from engines.audio_engine import AudioHashEngine
 from generators.dmca_generator import DMCAGenerator
 from utils.redis_utils import redis_manager
 
@@ -23,6 +24,7 @@ sock = Sock(app)  # Initialize WebSocket support
 # Initialize engine instances
 hash_engine = VideoHashEngine(frame_sample_rate=10, hash_size=8)
 matcher = VideoMatcher(threshold=85.0, hash_size=8)
+audio_engine = AudioHashEngine()
 ai_engine = SentinelAI()
 generator = DMCAGenerator(output_dir="../notices")
 
@@ -85,8 +87,11 @@ def upload_protected():
 
     try:
         # Extract pHashes using hash_engine
-        hashes, metadata = hash_engine.hash_video(video_path)
-
+        video_hashes, video_metadata = hash_engine.hash_video(video_path)
+        
+        # Extract audio hash using audio_engine
+        audio_hash = audio_engine.extract_audio_hash(video_path)
+        
         # Store in database
         conn = sqlite3.connect("../data/sentinel.db")
         cursor = conn.cursor()
@@ -98,9 +103,9 @@ def upload_protected():
             (
                 request.form.get("title", "Unknown"),
                 request.form.get("league", "Unknown"),
-                json.dumps(hashes),
-                "",  # Audio hash would be extracted separately if needed
-                metadata["duration_seconds"],
+                json.dumps(video_hashes),
+                audio_hash or "",  # Store audio hash if extraction succeeded
+                video_metadata["duration_seconds"],
             ),
         )
         content_id = cursor.lastrowid
@@ -109,7 +114,7 @@ def upload_protected():
 
         # Cache hashes in Redis for fast retrieval
         if content_id is not None:
-            redis_manager.cache_protected_hashes(content_id, hashes, ttl=3600)
+            redis_manager.cache_protected_hashes(content_id, video_hashes, ttl=3600)
 
         # Clean up temp file
         os.remove(video_path)
@@ -118,8 +123,9 @@ def upload_protected():
             {
                 "message": "Protected content uploaded and hashed",
                 "content_id": content_id,
-                "hash_count": len(hashes),
-                "processing_time_seconds": metadata["processing_time_seconds"],
+                "video_hash_count": len(video_hashes),
+                "audio_hash_extracted": audio_hash is not None,
+                "processing_time_seconds": video_metadata["processing_time_seconds"],
             }
         ), 201
 
@@ -148,6 +154,9 @@ def upload_suspect():
     try:
         # Extract pHashes from suspect video
         suspect_hashes, suspect_metadata = hash_engine.hash_video(video_path)
+        
+        # Extract audio hash from suspect video
+        suspect_audio_hash = audio_engine.extract_audio_hash(video_path)
 
         # Get all protected content IDs from Redis (fallback to database)
         protected_ids = redis_manager.get_all_protected_content_ids()
@@ -169,6 +178,7 @@ def upload_suspect():
             title = "Unknown"
             league = "Unknown"
             protected_hashes = []
+            protected_audio_hash = None
 
             # Try to get hashes from Redis cache first
             cached_hashes = redis_manager.get_protected_hashes(content_id)
@@ -176,30 +186,51 @@ def upload_suspect():
                 protected_hashes = cached_hashes
                 # Get title and league from database since we don't cache them
                 cursor.execute(
-                    "SELECT title, league FROM protected_content WHERE id = ?",
+                    "SELECT title, league, audio_hash FROM protected_content WHERE id = ?",
                     (content_id,),
                 )
                 row = cursor.fetchone()
                 if row is not None:
-                    title, league = row
+                    title, league, protected_audio_hash = row
             else:
                 # Fallback to database
                 cursor.execute(
-                    "SELECT title, league, video_hashes, duration_seconds FROM protected_content WHERE id = ?",
+                    "SELECT title, league, video_hashes, audio_hash, duration_seconds FROM protected_content WHERE id = ?",
                     (content_id,),
                 )
                 row = cursor.fetchone()
                 if row is None:
                     continue
-                title, league, video_hashes_json, duration = row
+                title, league, video_hashes_json, protected_audio_hash, duration = row
                 protected_hashes = json.loads(video_hashes_json)
 
             # Match suspect hashes against protected hashes
-            match_result = matcher.match_video_sequences(
+            video_match_result = matcher.match_video_sequences(
                 suspect_hashes, protected_hashes
             )
+            
+            # Audio matching if both hashes exist
+            audio_match_score = 0.0
+            if suspect_audio_hash and protected_audio_hash:
+                _, audio_match_score = matcher.compare_hashes(suspect_audio_hash, protected_audio_hash)
+            
+            # Multi-modal confidence scoring
+            # Weight video matching more heavily (70%) than audio (30%)
+            video_confidence = video_match_result["confidence_score"]
+            audio_confidence = audio_match_score
+            
+            if audio_confidence > 0:  # Audio match available
+                combined_confidence = (video_confidence * 0.7) + (audio_confidence * 0.3)
+            else:  # Video only
+                combined_confidence = video_confidence
+            
+            # Adjust match result with combined confidence
+            video_match_result["confidence_score"] = combined_confidence
+            video_match_result["audio_match_score"] = audio_confidence
+            video_match_result["video_match_score"] = video_confidence
+            video_match_result["multi_modal"] = audio_confidence > 0
 
-            if match_result["is_match"]:
+            if video_match_result["is_match"]:
                 # Store detection event
                 cursor.execute(
                     """
@@ -209,7 +240,7 @@ def upload_suspect():
                     (
                         content_id,
                         request.form.get("stream_url", "unknown"),
-                        match_result["confidence_score"],
+                        video_match_result["confidence_score"],
                     ),
                 )
                 detection_id = cursor.lastrowid
@@ -219,10 +250,10 @@ def upload_suspect():
                     detection_data = {
                         "detection_id": detection_id,
                         "content_id": content_id,
-                        "confidence_score": match_result["confidence_score"],
+                        "confidence_score": video_match_result["confidence_score"],
                         "stream_url": request.form.get("stream_url", "unknown"),
                         "detected_at": datetime.now().isoformat(),
-                        "match_details": match_result,
+                        "match_details": video_match_result,
                     }
                     redis_manager.cache_detection_result(
                         detection_id, detection_data, ttl=1800
@@ -234,7 +265,10 @@ def upload_suspect():
                         "content_id": content_id,
                         "title": title,
                         "league": league,
-                        "confidence_score": match_result["confidence_score"],
+                        "confidence_score": video_match_result["confidence_score"],
+                        "audio_match_score": video_match_result.get("audio_match_score", 0.0),
+                        "video_match_score": video_match_result.get("video_match_score", 0.0),
+                        "multi_modal": video_match_result.get("multi_modal", False),
                         "stream_url": request.form.get("stream_url", "unknown"),
                     }
                 )
