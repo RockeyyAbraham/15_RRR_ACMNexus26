@@ -346,14 +346,26 @@ def generate_missing_variants(original_path, pirated_dir):
         print(f"\n→ Generating {description}...")
         
         try:
-            if variant_file == "watermark.mp4":
-                generate_watermark_variant(original_path, output_path)
+            if variant_file == "240p.mp4":
+                generate_240p_variant(original_path, output_path)
+            elif variant_file == "colorshift.mp4":
+                generate_colorshift_variant(original_path, output_path)
+            elif variant_file == "cropped.mp4":
+                generate_cropped_variant(original_path, output_path)
+            elif variant_file == "extreme.mp4":
+                generate_extreme_variant(original_path, output_path)
+            elif variant_file == "letterbox.mp4":
+                generate_letterbox_variant(original_path, output_path)
+            elif variant_file == "mirrored.mp4":
+                generate_mirrored_variant(original_path, output_path)
             elif variant_file == "rotate.mp4":
                 generate_rotate_variant(original_path, output_path)
             elif variant_file == "stretch.mp4":
                 generate_stretch_variant(original_path, output_path)
+            elif variant_file == "watermark.mp4":
+                generate_watermark_variant(original_path, output_path)
             else:
-                print(f"  ⚠ Skipping {description} (complex transformation)")
+                print(f"  ⚠ Unknown variant: {description}")
                 continue
                 
             print(f"  ✓ Created: {variant_file}")
@@ -437,6 +449,218 @@ def generate_stretch_variant(input_path, output_path):
         
         stretched = cv2.resize(frame, (new_width, new_height))
         out.write(stretched)
+        frame_count += 1
+    
+    cap.release()
+    out.release()
+
+def generate_240p_variant(input_path, output_path):
+    """Generate 240p compression variant using OpenCV."""
+    import cv2
+    
+    cap = cv2.VideoCapture(input_path)
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    
+    # Get original dimensions
+    original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    # Calculate 240p height (maintain aspect ratio)
+    scale_factor = 240 / original_height
+    new_width = int(original_width * scale_factor)
+    new_height = 240
+    
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (new_width, new_height))
+    
+    frame_count = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret or frame_count > 300:
+            break
+        
+        # Resize to 240p
+        resized = cv2.resize(frame, (new_width, new_height))
+        out.write(resized)
+        frame_count += 1
+    
+    cap.release()
+    out.release()
+
+def generate_colorshift_variant(input_path, output_path):
+    """Generate color shifted variant using OpenCV."""
+    import cv2
+    import numpy as np
+    
+    cap = cv2.VideoCapture(input_path)
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    
+    frame_count = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret or frame_count > 300:
+            break
+        
+        # Apply color shift (increase red channel, decrease blue)
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        hsv[:, :, 0] = (hsv[:, :, 0] + 30) % 180  # Shift hue
+        colorshifted = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        out.write(colorshifted)
+        frame_count += 1
+    
+    cap.release()
+    out.release()
+
+def generate_cropped_variant(input_path, output_path):
+    """Generate cropped variant using OpenCV."""
+    import cv2
+    
+    cap = cv2.VideoCapture(input_path)
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    # Crop to center 80% of frame
+    crop_x = int(width * 0.1)
+    crop_y = int(height * 0.1)
+    crop_width = int(width * 0.8)
+    crop_height = int(height * 0.8)
+    
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (crop_width, crop_height))
+    
+    frame_count = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret or frame_count > 300:
+            break
+        
+        # Crop frame
+        cropped = frame[crop_y:crop_y+crop_height, crop_x:crop_x+crop_width]
+        out.write(cropped)
+        frame_count += 1
+    
+    cap.release()
+    out.release()
+
+def generate_extreme_variant(input_path, output_path):
+    """Generate extreme degradation variant (240p + crop + noise)."""
+    import cv2
+    import numpy as np
+    
+    cap = cv2.VideoCapture(input_path)
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    # Step 1: Reduce to 240p
+    scale_factor = 240 / original_height
+    new_width = int(original_width * scale_factor)
+    new_height = 240
+    
+    # Step 2: Crop further
+    crop_x = int(new_width * 0.1)
+    crop_y = int(new_height * 0.1)
+    crop_width = int(new_width * 0.8)
+    crop_height = int(new_height * 0.8)
+    
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (crop_width, crop_height))
+    
+    frame_count = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret or frame_count > 300:
+            break
+        
+        # Apply extreme degradation
+        # 1. Resize to 240p
+        small = cv2.resize(frame, (new_width, new_height))
+        
+        # 2. Crop
+        cropped = small[crop_y:crop_y+crop_height, crop_x:crop_x+crop_width]
+        
+        # 3. Add noise
+        noise = np.random.normal(0, 25, cropped.shape).astype(np.uint8)
+        noisy = cv2.add(cropped, noise)
+        
+        # 4. Apply blur
+        blurred = cv2.GaussianBlur(noisy, (3, 3), 0)
+        
+        out.write(blurred)
+        frame_count += 1
+    
+    cap.release()
+    out.release()
+
+def generate_letterbox_variant(input_path, output_path):
+    """Generate letterboxed variant using OpenCV."""
+    import cv2
+    import numpy as np
+    
+    cap = cv2.VideoCapture(input_path)
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    # Create letterbox dimensions (16:9 to 21:9)
+    target_width = width
+    target_height = int(width * 9/21)  # Cinematic aspect ratio
+    
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (target_width, target_height))
+    
+    frame_count = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret or frame_count > 300:
+            break
+        
+        # Resize video to fit within letterbox
+        resized_height = target_height - 100  # Leave 50px top/bottom for black bars
+        resized_width = int(width * resized_height / height)
+        resized = cv2.resize(frame, (resized_width, resized_height))
+        
+        # Create letterbox frame (black background)
+        letterbox = np.zeros((target_height, target_width, 3), dtype=np.uint8)
+        
+        # Center the resized video
+        y_offset = (target_height - resized_height) // 2
+        x_offset = (target_width - resized_width) // 2
+        letterbox[y_offset:y_offset+resized_height, x_offset:x_offset+resized_width] = resized
+        
+        out.write(letterbox)
+        frame_count += 1
+    
+    cap.release()
+    out.release()
+
+def generate_mirrored_variant(input_path, output_path):
+    """Generate mirrored variant using OpenCV."""
+    import cv2
+    
+    cap = cv2.VideoCapture(input_path)
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    
+    frame_count = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret or frame_count > 300:
+            break
+        
+        # Horizontal flip
+        mirrored = cv2.flip(frame, 1)
+        out.write(mirrored)
         frame_count += 1
     
     cap.release()
