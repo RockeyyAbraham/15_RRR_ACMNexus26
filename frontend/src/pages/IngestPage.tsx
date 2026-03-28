@@ -8,18 +8,64 @@ import type { HealthApi, MetricsSummaryApi, PiracyBenchmarkResponse } from "../t
 
 export default function IngestPage() {
   const [file, setFile] = useState<File | null>(null);
-  const [leagueName, setLeagueName] = useState("EURO_PREMIER_CHAMPIONSHIP");
-  const [matchId, setMatchId] = useState("UUID_88392_B");
+  const [leagueName, setLeagueName] = useState("");
+  const [matchId, setMatchId] = useState("");
   const [broadcastDate, setBroadcastDate] = useState(new Date().toISOString().slice(0, 10));
+  const [contentTitle, setContentTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [jobStage, setJobStage] = useState<string | null>(null);
   const [benchmarkResult, setBenchmarkResult] = useState<PiracyBenchmarkResponse | null>(null);
   const [progress, setProgress] = useState({ video: 91, audio: 64 });
+  const [variantProgress, setVariantProgress] = useState<{
+    current: number;
+    total: number;
+    currentVariant: string;
+    currentDescription: string;
+    stage: 'generating' | 'analyzing' | 'complete' | null;
+    results: Array<{
+      name: string;
+      description: string;
+      videoConfidence: number;
+      audioConfidence: number;
+      combinedConfidence: number;
+      isDetected: boolean;
+    }>;
+  } | null>(null);
   const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
   const [health, setHealth] = useState<HealthApi | null>(null);
   const [recentConfidence, setRecentConfidence] = useState<Array<{ label: string; value: number }>>([]);
+  // Auto-detect content info from filename
+  useEffect(() => {
+    if (file) {
+      const filename = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
+      
+      // Extract title from filename if fields are empty
+      if (!contentTitle) {
+        setContentTitle(filename);
+      }
+      if (!matchId) {
+        // Generate a simple match ID from filename
+        const id = filename.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
+        setMatchId(id);
+      }
+      if (!leagueName) {
+        // Try to detect league from common patterns
+        if (filename.toLowerCase().includes('formula') || filename.toLowerCase().includes('f1')) {
+          setLeagueName("FORMULA_1");
+        } else if (filename.toLowerCase().includes('premier') || filename.toLowerCase().includes('epl')) {
+          setLeagueName("PREMIER_LEAGUE");
+        } else if (filename.toLowerCase().includes('champions') || filename.toLowerCase().includes('ucl')) {
+          setLeagueName("CHAMPIONS_LEAGUE");
+        } else {
+          setLeagueName("GENERAL_SPORTS");
+        }
+      }
+    }
+  }, [file, contentTitle, matchId, leagueName]);
+
   const sortedBenchmarkVariants = useMemo(
     () =>
       benchmarkResult
@@ -40,21 +86,23 @@ export default function IngestPage() {
 
   useEffect(() => {
     let mounted = true;
+    let pollInterval: number | null = null;
 
-    fetchMetricsSummary().then((data) => {
-      if (mounted) {
-        setSummary(data);
-      }
-    });
+    const loadData = async () => {
+      if (!mounted) return;
 
-    fetchHealth().then((data) => {
-      if (mounted) {
-        setHealth(data);
-      }
-    });
+      const [summaryData, healthData, items] = await Promise.all([
+        fetchMetricsSummary().catch(() => null),
+        fetchHealth().catch(() => null),
+        fetchDetections().catch(() => []),
+      ]);
 
-    fetchDetections().then((items) => {
-      if (mounted) {
+      if (!mounted) return;
+
+      setSummary(summaryData);
+      setHealth(healthData);
+
+      if (items.length > 0) {
         const trend = items
           .slice(0, 7)
           .reverse()
@@ -64,10 +112,26 @@ export default function IngestPage() {
           }));
         setRecentConfidence(trend);
       }
-    });
+    };
+
+    loadData();
+
+    pollInterval = window.setInterval(() => {
+      if (mounted) {
+        fetchMetricsSummary().then((data) => {
+          if (mounted) setSummary(data);
+        });
+        fetchHealth().then((data) => {
+          if (mounted) setHealth(data);
+        });
+      }
+    }, 5000);
 
     return () => {
       mounted = false;
+      if (pollInterval !== null) {
+        window.clearInterval(pollInterval);
+      }
     };
   }, []);
 
@@ -105,9 +169,10 @@ export default function IngestPage() {
     setLoading(true);
     setError(null);
     setMessage(null);
+    setJobStage("queued");
     setProgress({ video: 28, audio: 12 });
 
-    let interval: number | undefined;
+    let interval: number | null = null;
 
     try {
       interval = window.setInterval(() => {
@@ -117,16 +182,20 @@ export default function IngestPage() {
         }));
       }, 220);
 
-      const response = await generateFingerprint({
-        title: matchId,
-        league: leagueName,
+      const result = await generateFingerprint({
+        title: contentTitle || matchId || file?.name || "Protected Content",
+        league: leagueName || "UNKNOWN_LEAGUE",
         broadcastDate,
         file,
+      }, {
+        onProgress: (progress) => {
+          setJobStage(progress.stage ?? progress.status);
+        },
       });
 
       setProgress({ video: 100, audio: 100 });
       setMessage(
-        `${response.message}. Content ID ${response.content_id} indexed with ${response.video_hash_count} protected hashes.`,
+        `${result.message}. Content ID ${result.content_id} indexed with ${result.video_hash_count} protected hashes.`,
       );
       const refreshedSummary = await fetchMetricsSummary();
       setSummary(refreshedSummary);
@@ -135,9 +204,10 @@ export default function IngestPage() {
       setError("Fingerprint generation failed. Verify the Flask backend is online.");
       setProgress({ video: 0, audio: 0 });
     } finally {
-      if (interval) {
+      if (interval !== null) {
         window.clearInterval(interval);
       }
+      setJobStage(null);
       setLoading(false);
     }
   };
@@ -152,16 +222,91 @@ export default function IngestPage() {
     setBenchmarkLoading(true);
     setError(null);
     setMessage(null);
+    setJobStage("queued");
+    setVariantProgress(null);
 
     try {
       const result = await runPiracyBenchmark({
-        title: matchId,
-        league: leagueName,
+        title: contentTitle || matchId || file?.name || "Protected Content",
+        league: leagueName || "UNKNOWN_LEAGUE",
         broadcastDate,
         file,
+      }, {
+        onProgress: (progress) => {
+          console.log('Progress received:', progress);
+          const stage = progress.stage ?? progress.status;
+          setJobStage(stage);
+          
+          if (progress.progress_data) {
+            const data = progress.progress_data;
+            console.log('Progress data:', data);
+            
+            if (stage === 'generating_variants') {
+              setVariantProgress({
+                current: 0,
+                total: data.total_variants || 17,
+                currentVariant: '',
+                currentDescription: 'Initializing variant generation...',
+                stage: 'generating',
+                results: [],
+              });
+            } else if (stage === 'variant_generating') {
+              setVariantProgress(prev => prev ? {
+                ...prev,
+                current: data.variant_index || 0,
+                total: data.variant_total || 17,
+                currentVariant: data.variant_name || '',
+                currentDescription: data.variant_description || '',
+                stage: 'generating',
+              } : null);
+            } else if (stage === 'variant_generated') {
+              setVariantProgress(prev => prev ? {
+                ...prev,
+                current: data.variant_index || 0,
+                total: data.variant_total || 17,
+                currentVariant: data.variant_name || '',
+                currentDescription: `✓ ${data.variant_description || ''}`,
+                stage: 'generating',
+              } : null);
+            } else if (stage === 'variant_analyzing') {
+              setVariantProgress(prev => prev ? {
+                ...prev,
+                current: data.variant_index || 0,
+                total: data.variant_total || 17,
+                currentVariant: data.variant_name || '',
+                currentDescription: `Analyzing: ${data.variant_description || ''}`,
+                stage: 'analyzing',
+              } : null);
+            } else if (stage === 'variant_analyzed') {
+              setVariantProgress(prev => {
+                const newResults = [...(prev?.results || [])];
+                newResults.push({
+                  name: data.variant_name || '',
+                  description: data.variant_description || '',
+                  videoConfidence: data.video_confidence || 0,
+                  audioConfidence: data.audio_confidence || 0,
+                  combinedConfidence: data.combined_confidence || 0,
+                  isDetected: data.is_detected || false,
+                });
+                
+                return prev ? {
+                  ...prev,
+                  current: data.variant_index || 0,
+                  total: data.variant_total || 17,
+                  currentVariant: data.variant_name || '',
+                  currentDescription: `${data.is_detected ? '🔴 DETECTED' : '✓ Analyzed'}: ${data.variant_description || ''} (${data.combined_confidence?.toFixed(1)}%)`,
+                  stage: 'analyzing',
+                  results: newResults,
+                } : null;
+              });
+            }
+          }
+        },
       });
 
       setBenchmarkResult(result);
+      setVariantProgress(prev => prev ? { ...prev, stage: 'complete' } : null);
+      
       const weakVariant = result.variants
         .slice()
         .sort((a, b) => a.combined_confidence - b.combined_confidence)[0];
@@ -178,7 +323,9 @@ export default function IngestPage() {
           ? benchmarkError.message
           : "Benchmark failed. Verify backend and try again.",
       );
+      setVariantProgress(null);
     } finally {
+      setJobStage(null);
       setBenchmarkLoading(false);
     }
   };
@@ -212,6 +359,16 @@ export default function IngestPage() {
               </div>
 
               <div className="space-y-6">
+                <label className="block">
+                  <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Content Title</span>
+                  <input
+                    className="field-shell w-full"
+                    placeholder="Auto-detected from filename"
+                    value={contentTitle}
+                    onChange={(event) => setContentTitle(event.target.value)}
+                  />
+                </label>
+
                 <label className="block">
                   <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">League Name</span>
                   <input
@@ -281,6 +438,58 @@ export default function IngestPage() {
                     className="rounded-2xl border border-neon/20 bg-neon/10 px-5 py-4 text-xs font-bold uppercase tracking-widest text-neon leading-relaxed"
                   >
                     {message}
+                  </motion.div>
+                ) : null}
+                {jobStage ? (
+                  <div className="rounded-2xl border border-cyan/20 bg-cyan/5 px-5 py-4 text-xs font-bold uppercase tracking-widest text-cyan leading-relaxed">
+                    Background Stage: {jobStage.replace(/_/g, " ")}
+                  </div>
+                ) : null}
+                {variantProgress ? (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="rounded-2xl border border-neon/20 bg-slate-950/60 p-6 space-y-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="font-display text-sm font-bold uppercase tracking-[0.2em] text-neon">
+                        {variantProgress.stage === 'generating' ? '⚙️ Generating Variants' : 
+                         variantProgress.stage === 'analyzing' ? '🔬 Analyzing Variants' : 
+                         '✅ Benchmark Complete'}
+                      </div>
+                      <div className="font-mono text-xs text-slate-400">
+                        {variantProgress.current}/{variantProgress.total}
+                      </div>
+                    </div>
+                    
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-900/50">
+                      <motion.div
+                        className="h-full rounded-full bg-gradient-to-r from-neon/40 via-neon to-neon shadow-[0_0_15px_rgba(212,255,0,0.3)]"
+                        animate={{ width: `${(variantProgress.current / variantProgress.total) * 100}%` }}
+                        transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+                      />
+                    </div>
+                    
+                    {variantProgress.currentVariant && (
+                      <div className="text-xs font-medium text-slate-300 leading-relaxed">
+                        <span className="text-cyan font-bold">{variantProgress.currentVariant}</span>: {variantProgress.currentDescription}
+                      </div>
+                    )}
+                    
+                    {variantProgress.results.length > 0 && (
+                      <div className="mt-4 max-h-48 overflow-y-auto space-y-2 border-t border-white/5 pt-4">
+                        {variantProgress.results.slice(-5).reverse().map((result, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-[10px] font-medium">
+                            <span className={result.isDetected ? 'text-neon' : 'text-slate-500'}>
+                              {result.isDetected ? '🔴' : '✓'} {result.description}
+                            </span>
+                            <span className="font-mono text-cyan">
+                              {result.combinedConfidence.toFixed(1)}%
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </motion.div>
                 ) : null}
                 {error ? (

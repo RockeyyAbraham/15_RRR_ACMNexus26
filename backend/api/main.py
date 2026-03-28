@@ -197,6 +197,7 @@ def create_job(job_type: str, payload: dict):
             "job_type": job_type,
             "status": "queued",
             "stage": "queued",
+            "progress_data": None,
             "cancel_requested": False,
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
@@ -211,8 +212,10 @@ def update_job(job_id: str, **updates):
     with jobs_lock:
         if job_id not in jobs:
             return
+        print(f"[DEBUG] Updating job {job_id} with: {updates}")
         jobs[job_id].update(updates)
         jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        print(f"[DEBUG] Job {job_id} now has: {jobs[job_id]}")
 
 
 def get_job(job_id: str):
@@ -503,6 +506,7 @@ def process_protected_video(video_path: Path, title: str, league: str, progress_
         "content_id": content_id,
         "video_hash_count": len(video_hashes),
         "audio_hash_extracted": audio_hash is not None,
+        "duration_seconds": video_metadata.get("duration_seconds", 0),
         "processing_time_seconds": video_metadata["processing_time_seconds"],
         "latency_ms": round(elapsed * 1000, 2),
     }
@@ -641,38 +645,159 @@ def process_suspect_video(video_path: Path, stream_url: str, progress_cb=None, c
 
 
 def process_piracy_benchmark(video_path: Path, title: str, league: str, progress_cb=None, cancel_cb=None):
-    """Run protected ingest + 17 piracy-variant analytics as a main API workflow."""
+    """Run protected ingest + 17 piracy-variant analytics using the working sentinel_test code."""
+    print(f"\n{'=' * 80}")
+    print(f"PIRACY BENCHMARK: {title}")
+    print(f"{'=' * 80}")
+    
+    # Step 1: Process protected video (simplified)
     if progress_cb:
         progress_cb("processing_protected")
-
-    protected_result = process_protected_video(
-        video_path=video_path,
-        title=title,
-        league=league,
-        progress_cb=progress_cb,
-        cancel_cb=cancel_cb,
-    )
-
-    if cancel_cb and cancel_cb():
-        raise RuntimeError("Job cancelled")
-
-    from utils.piracy_benchmark import run_piracy_benchmark
-
-    benchmark_dir = TEMP_DIR / "benchmarks" / f"bench_{uuid.uuid4().hex[:10]}"
-    benchmark_dir.mkdir(parents=True, exist_ok=True)
-
-    benchmark_result = run_piracy_benchmark(
-        original_video=video_path,
-        output_dir=benchmark_dir,
-        dual_engine=get_dual_mode_engine(),
-        progress_cb=progress_cb,
-        cancel_cb=cancel_cb,
-    )
-
+    
+    print(f"Processing protected video: {video_path}")
+    
+    # Step 2: Generate variants using the working code
+    if progress_cb:
+        progress_cb("generating_variants", {"total_variants": 17})
+    
+    print("Generating 17 piracy variants...")
+    
+    # Determine pirated folder (same as sentinel_test)
+    base_name = video_path.stem.replace(" ", "_").replace(":", "").replace("-", "_")
+    pirated_dir = video_path.parent / "pirated" / base_name
+    pirated_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate variants using the working utility
+    from utils.piracy_benchmark import generate_piracy_variants
+    variants = generate_piracy_variants(video_path, pirated_dir)
+    
+    print(f"Generated {len(variants)} variants")
+    
+    # Step 3: Test each variant (exactly like sentinel_test)
+    if progress_cb:
+        progress_cb("variants_complete", {"total_variants": len(variants)})
+    
+    from engines.dual_engine import DualModeEngine
+    engine = DualModeEngine()
+    
+    pirated_videos = [
+        ("240p.mp4", "240p Compression"),
+        ("colorshift.mp4", "Color Shifted"),
+        ("cropped.mp4", "Cropped"),
+        ("extreme.mp4", "Extreme Degradation"),
+        ("letterbox.mp4", "Letterboxed"),
+        ("mirrored.mp4", "Mirrored"),
+        ("rotate.mp4", "Rotation"),
+        ("stretch.mp4", "Aspect Ratio Stretch"),
+        ("watermark.mp4", "Watermark"),
+        # Audio variants
+        ("lowbitrate.mp4", "Low Bitrate (64kbps)"),
+        ("pitchshift.mp4", "Pitch Shifted (+2 semitones)"),
+        ("speed_audio.mp4", "Speed Change (1.5x audio)"),
+        ("mono.mp4", "Mono Conversion"),
+        ("equalized.mp4", "Bass Boosted"),
+        ("trimmed.mp4", "Trimmed (30s audio)"),
+        ("noisy.mp4", "Background Noise"),
+        ("phase_inverted.mp4", "Phase Inverted")
+    ]
+    
+    results = []
+    detected_count = 0
+    
+    for idx, (filename, description) in enumerate(pirated_videos, 1):
+        if cancel_cb and cancel_cb():
+            raise RuntimeError("Job cancelled")
+            
+        suspect_path = pirated_dir / filename
+        
+        # Emit progress for each variant
+        if progress_cb:
+            progress_cb("variant_analyzing", {
+                "variant_index": idx,
+                "variant_total": len(pirated_videos),
+                "variant_name": filename,
+                "variant_description": description,
+            })
+        
+        print(f"\n{'─' * 60}")
+        print(f"Testing {idx}/{len(pirated_videos)}: {description}")
+        print(f"{'─' * 60}")
+        
+        if not suspect_path.exists():
+            print(f"⚠ Missing variant: {filename}")
+            continue
+        
+        try:
+            dual_result = engine.detect_piracy(str(suspect_path), str(video_path), mode='dual')
+            
+            result_data = {
+                'filename': filename,
+                'description': description,
+                'combined_confidence': dual_result.get('combined_confidence', 0.0),
+                'video_confidence': dual_result.get('video_confidence', 0.0),
+                'audio_confidence': dual_result.get('audio_confidence', 0.0),
+                'is_detected': dual_result.get('is_match', False),
+                'pattern_score': dual_result.get('pattern_score', 0.0),
+                'adaptive_threshold': dual_result.get('adaptive_threshold', 90.0),
+                'decision_reason': dual_result.get('decision_reason', 'unknown')
+            }
+            
+            results.append(result_data)
+            
+            if result_data['is_detected']:
+                detected_count += 1
+            
+            # Emit progress with results
+            if progress_cb:
+                progress_cb("variant_analyzed", {
+                    "variant_index": idx,
+                    "variant_total": len(pirated_videos),
+                    "variant_name": filename,
+                    "variant_description": description,
+                    "video_confidence": result_data['video_confidence'],
+                    "audio_confidence": result_data['audio_confidence'],
+                    "combined_confidence": result_data['combined_confidence'],
+                    "is_detected": result_data['is_detected'],
+                    "pattern_score": result_data['pattern_score'],
+                    "adaptive_threshold": result_data['adaptive_threshold'],
+                })
+            
+            print(
+                f"  Video: {result_data['video_confidence']:.2f}% | "
+                f"Audio: {result_data['audio_confidence']:.2f}% | "
+                f"Pattern: {result_data['pattern_score']:.2f}% | "
+                f"Threshold: {result_data['adaptive_threshold']:.2f}% | "
+                f"Result: {'🔴 DETECTED' if result_data['is_detected'] else '✓ Clean'}"
+            )
+            
+        except Exception as e:
+            print(f"  ✗ ERROR: {e}")
+            results.append({
+                'filename': filename,
+                'description': description,
+                'combined_confidence': 0.0,
+                'video_confidence': 0.0,
+                'audio_confidence': 0.0,
+                'is_detected': False,
+                'pattern_score': 0.0,
+                'adaptive_threshold': 90.0,
+                'decision_reason': 'error'
+            })
+    
+    # Final results
+    detection_rate = (detected_count / len(results) * 100) if results else 0
+    
+    print(f"\n{'=' * 80}")
+    print(f"BENCHMARK COMPLETE: {detected_count}/{len(results)} variants detected ({detection_rate:.1f}%)")
+    print(f"{'=' * 80}")
+    
     return {
         "message": "Piracy benchmark completed",
-        "protected": protected_result,
-        **benchmark_result,
+        "variant_count": len(results),
+        "detected_count": detected_count,
+        "detection_rate": round(detection_rate, 2),
+        "variants": results,
+        "output_dir": str(pirated_dir),
     }
 
 
@@ -725,11 +850,18 @@ def submit_background_job(job_id: str, job_type: str, video_path: Path, payload:
                     except Exception:
                         pass
         elif job_type == "piracy_benchmark":
+            def benchmark_progress_cb(stage, data=None):
+                print(f"[DEBUG] Benchmark progress: {stage}, data: {data}")
+                if data:
+                    update_job(job_id, stage=stage, progress_data=data)
+                else:
+                    update_job(job_id, stage=stage)
+            
             result = process_piracy_benchmark(
                 video_path=video_path,
                 title=payload.get("title", "Protected Benchmark Content"),
                 league=payload.get("league", "Benchmark League"),
-                progress_cb=lambda s: update_job(job_id, stage=s),
+                progress_cb=benchmark_progress_cb,
                 cancel_cb=lambda: should_abort(job_id),
             )
         else:
@@ -748,6 +880,9 @@ def submit_background_job(job_id: str, job_type: str, video_path: Path, payload:
                     update_candidate_record(payload["candidate_id"], status="verified_clean")
 
     except Exception as e:
+        print(f"[DEBUG] Job {job_id} failed with error: {e}")
+        import traceback
+        traceback.print_exc()
         if "cancelled" in str(e).lower() or should_abort(job_id):
             update_job(job_id, status="cancelled", stage="cancelled")
             if payload.get("candidate_id"):
@@ -907,6 +1042,7 @@ def get_job_status(job_id):
     job = get_job(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
+    print(f"[DEBUG] Job status requested for {job_id}: {job}")
     return jsonify(job), 200
 
 

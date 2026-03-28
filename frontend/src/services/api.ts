@@ -28,20 +28,55 @@ type AsyncUploadQueuedResponse = {
 
 type AsyncUploadJobResponse<T> = {
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  stage?: string;
+  progress_data?: {
+    total_variants?: number;
+    variant_index?: number;
+    variant_total?: number;
+    variant_name?: string;
+    variant_description?: string;
+    video_confidence?: number;
+    audio_confidence?: number;
+    combined_confidence?: number;
+    is_detected?: boolean;
+    pattern_score?: number;
+    adaptive_threshold?: number;
+    error?: string;
+  };
   result?: T;
   error?: string;
 };
 
+type AsyncJobProgress = {
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  stage?: string;
+  progress_data?: {
+    total_variants?: number;
+    variant_index?: number;
+    variant_total?: number;
+    variant_name?: string;
+    variant_description?: string;
+    video_confidence?: number;
+    audio_confidence?: number;
+    combined_confidence?: number;
+    is_detected?: boolean;
+    pattern_score?: number;
+    adaptive_threshold?: number;
+    error?: string;
+  };
+};
+
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
-async function waitForAsyncJob<T>(jobId: string): Promise<T> {
+async function waitForAsyncJob<T>(jobId: string, onProgress?: (progress: AsyncJobProgress) => void): Promise<T> {
   const started = Date.now();
 
   while (Date.now() - started < POLL_TIMEOUT_MS) {
     let data: AsyncUploadJobResponse<T>;
     try {
-      const response = await api.get<AsyncUploadJobResponse<T>>(`/jobs/${jobId}`);
+      const response = await axios.get<AsyncUploadJobResponse<T>>(`${baseUrl}/jobs/${jobId}`);
       data = response.data;
+      console.log(`[DEBUG] Job ${jobId} status:`, data);
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
         throw new Error(
@@ -49,6 +84,11 @@ async function waitForAsyncJob<T>(jobId: string): Promise<T> {
         );
       }
       throw error;
+    }
+
+    if (onProgress) {
+      console.log(`[DEBUG] Calling onProgress with:`, { status: data.status, stage: data.stage, progress_data: data.progress_data });
+      onProgress({ status: data.status, stage: data.stage, progress_data: data.progress_data });
     }
 
     if (data.status === "completed") {
@@ -77,7 +117,7 @@ export async function generateFingerprint({
   league,
   broadcastDate,
   file,
-}: UploadPayload): Promise<FingerprintResponse> {
+}: UploadPayload, options?: { onProgress?: (progress: AsyncJobProgress) => void }): Promise<FingerprintResponse> {
   if (!file) {
     throw new Error("No file provided");
   }
@@ -92,7 +132,7 @@ export async function generateFingerprint({
     timeout: 30000,
   });
 
-  const finalResult = await waitForAsyncJob<FingerprintResponse>(data.job_id);
+  const finalResult = await waitForAsyncJob<FingerprintResponse>(data.job_id, options?.onProgress);
 
   return finalResult;
 }
@@ -102,7 +142,7 @@ export async function runPiracyBenchmark({
   league,
   broadcastDate,
   file,
-}: UploadPayload): Promise<PiracyBenchmarkResponse> {
+}: UploadPayload, options?: { onProgress?: (progress: AsyncJobProgress) => void }): Promise<PiracyBenchmarkResponse> {
   if (!file) {
     throw new Error("No file provided");
   }
@@ -117,7 +157,7 @@ export async function runPiracyBenchmark({
     timeout: 30000,
   });
 
-  return waitForAsyncJob<PiracyBenchmarkResponse>(data.job_id);
+  return waitForAsyncJob<PiracyBenchmarkResponse>(data.job_id, options?.onProgress);
 }
 
 export async function fetchDetections(): Promise<DetectionApiItem[]> {

@@ -19,13 +19,34 @@ export default function LegalPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const loadPageData = async () => {
-    const [detectionItems, summaryData] = await Promise.all([fetchDetections(), fetchMetricsSummary()]);
+    const [detectionItems, summaryData] = await Promise.all([
+      fetchDetections().catch(() => []),
+      fetchMetricsSummary().catch(() => null),
+    ]);
     setDetections(detectionItems);
     setSummary(summaryData);
   };
 
   useEffect(() => {
-    loadPageData();
+    let mounted = true;
+    let pollInterval: number | null = null;
+
+    if (mounted) {
+      loadPageData();
+    }
+
+    pollInterval = window.setInterval(() => {
+      if (mounted) {
+        loadPageData();
+      }
+    }, 5000);
+
+    return () => {
+      mounted = false;
+      if (pollInterval !== null) {
+        window.clearInterval(pollInterval);
+      }
+    };
   }, []);
 
   const legalNotices = useMemo(

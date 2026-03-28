@@ -297,12 +297,16 @@ def _generate_audio_variant_with_ffmpeg(input_path: Path, output_path: Path, var
         raise ValueError(f"Unknown audio variant: {variant}")
 
 
-def generate_piracy_variants(original_video: Path, output_dir: Path) -> List[Dict[str, Any]]:
+def generate_piracy_variants(
+    original_video: Path, 
+    output_dir: Path,
+    progress_cb: Optional[Callable[[str, Dict[str, Any]], None]] = None
+) -> List[Dict[str, Any]]:
     output_dir.mkdir(parents=True, exist_ok=True)
     ffmpeg_path = _find_ffmpeg()
     results: List[Dict[str, Any]] = []
 
-    for spec in VARIANT_SPECS:
+    for idx, spec in enumerate(VARIANT_SPECS, 1):
         output_path = output_dir / spec.filename
         item: Dict[str, Any] = {
             "filename": spec.filename,
@@ -313,6 +317,14 @@ def generate_piracy_variants(original_video: Path, output_dir: Path) -> List[Dic
             "status": "generated",
             "note": None,
         }
+
+        if progress_cb:
+            progress_cb("variant_generating", {
+                "variant_index": idx,
+                "variant_total": len(VARIANT_SPECS),
+                "variant_name": spec.filename,
+                "variant_description": spec.description,
+            })
 
         try:
             if spec.filename == "240p.mp4":
@@ -340,11 +352,27 @@ def generate_piracy_variants(original_video: Path, output_dir: Path) -> List[Dic
 
             if not output_path.exists():
                 raise RuntimeError("variant output file was not created")
+                
+            if progress_cb:
+                progress_cb("variant_generated", {
+                    "variant_index": idx,
+                    "variant_total": len(VARIANT_SPECS),
+                    "variant_name": spec.filename,
+                    "variant_description": spec.description,
+                })
         except Exception as exc:
-            # Keep the benchmark flowing even when an audio filter is unavailable.
             shutil.copy2(original_video, output_path)
             item["status"] = "fallback_copy"
             item["note"] = f"{type(exc).__name__}: {exc}"
+            
+            if progress_cb:
+                progress_cb("variant_fallback", {
+                    "variant_index": idx,
+                    "variant_total": len(VARIANT_SPECS),
+                    "variant_name": spec.filename,
+                    "variant_description": spec.description,
+                    "error": str(exc),
+                })
 
         results.append(item)
 
@@ -355,42 +383,69 @@ def run_piracy_benchmark(
     original_video: Path,
     output_dir: Path,
     dual_engine: Any,
-    progress_cb: Optional[Callable[[str], None]] = None,
+    progress_cb: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     cancel_cb: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
-    if progress_cb:
-        progress_cb("generating_variants")
-    variants = generate_piracy_variants(original_video, output_dir)
+    def emit_progress(stage: str, data: Dict[str, Any] = None):
+        print(f"[DEBUG] Emitting progress: {stage}, data: {data}")
+        if progress_cb:
+            progress_cb(stage, data or {})
 
+    emit_progress("generating_variants", {"total_variants": len(VARIANT_SPECS)})
+    
+    variants = generate_piracy_variants(
+        original_video, 
+        output_dir,
+        progress_cb=lambda stage, data: emit_progress(stage, data)
+    )
+
+    emit_progress("variants_complete", {"total_variants": len(variants)})
     analytics: List[Dict[str, Any]] = []
 
-    for variant in variants:
+    for idx, variant in enumerate(variants, 1):
         if cancel_cb and cancel_cb():
             raise RuntimeError("Job cancelled")
 
-        if progress_cb:
-            progress_cb(f"analyzing_{variant['filename']}")
+        emit_progress("variant_analyzing", {
+            "variant_index": idx,
+            "variant_total": len(variants),
+            "variant_name": variant["filename"],
+            "variant_description": variant["description"],
+        })
 
         result = dual_engine.detect_piracy(str(Path(variant["path"])), str(original_video), mode="dual")
         video_details = result.get("details", {}).get("video", {}) if isinstance(result.get("details"), dict) else {}
         consistency_ratio = video_details.get("consistency_ratio")
-        analytics.append(
-            {
-                "filename": variant["filename"],
-                "description": variant["description"],
-                "issue_type": variant["issue_type"],
-                "generation_status": variant["status"],
-                "generation_note": variant["note"],
-                "video_confidence": round(float(result.get("video_confidence", 0.0)), 2),
-                "audio_confidence": round(float(result.get("audio_confidence", 0.0)), 2),
-                "combined_confidence": round(float(result.get("combined_confidence", 0.0)), 2),
-                "consistency_ratio": round(float(consistency_ratio), 4) if isinstance(consistency_ratio, (int, float)) else None,
-                "pattern_score": round(float(result.get("pattern_score", 0.0)), 2),
-                "adaptive_threshold": round(float(result.get("adaptive_threshold", 0.0)), 2),
-                "decision_reason": result.get("decision_reason", "unknown"),
-                "is_detected": bool(result.get("is_match", False)),
-            }
-        )
+        
+        analysis_result = {
+            "filename": variant["filename"],
+            "description": variant["description"],
+            "issue_type": variant["issue_type"],
+            "generation_status": variant["status"],
+            "generation_note": variant["note"],
+            "video_confidence": round(float(result.get("video_confidence", 0.0)), 2),
+            "audio_confidence": round(float(result.get("audio_confidence", 0.0)), 2),
+            "combined_confidence": round(float(result.get("combined_confidence", 0.0)), 2),
+            "consistency_ratio": round(float(consistency_ratio), 4) if isinstance(consistency_ratio, (int, float)) else None,
+            "pattern_score": round(float(result.get("pattern_score", 0.0)), 2),
+            "adaptive_threshold": round(float(result.get("adaptive_threshold", 0.0)), 2),
+            "decision_reason": result.get("decision_reason", "unknown"),
+            "is_detected": bool(result.get("is_match", False)),
+        }
+        analytics.append(analysis_result)
+        
+        emit_progress("variant_analyzed", {
+            "variant_index": idx,
+            "variant_total": len(variants),
+            "variant_name": variant["filename"],
+            "variant_description": variant["description"],
+            "video_confidence": analysis_result["video_confidence"],
+            "audio_confidence": analysis_result["audio_confidence"],
+            "combined_confidence": analysis_result["combined_confidence"],
+            "is_detected": analysis_result["is_detected"],
+            "pattern_score": analysis_result["pattern_score"],
+            "adaptive_threshold": analysis_result["adaptive_threshold"],
+        })
 
     detected = sum(1 for item in analytics if item["is_detected"])
     total = len(analytics)
