@@ -197,6 +197,7 @@ def create_job(job_type: str, payload: dict):
             "job_type": job_type,
             "status": "queued",
             "stage": "queued",
+            "progress_data": None,
             "cancel_requested": False,
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
@@ -735,11 +736,17 @@ def submit_background_job(job_id: str, job_type: str, video_path: Path, payload:
                     except Exception:
                         pass
         elif job_type == "piracy_benchmark":
+            def benchmark_progress_cb(stage, data=None):
+                if data:
+                    update_job(job_id, stage=stage, progress_data=data)
+                else:
+                    update_job(job_id, stage=stage)
+            
             result = process_piracy_benchmark(
                 video_path=video_path,
                 title=payload.get("title", "Protected Benchmark Content"),
                 league=payload.get("league", "Benchmark League"),
-                progress_cb=lambda s: update_job(job_id, stage=s),
+                progress_cb=benchmark_progress_cb,
                 cancel_cb=lambda: should_abort(job_id),
             )
         else:

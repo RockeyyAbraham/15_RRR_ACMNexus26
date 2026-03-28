@@ -29,6 +29,20 @@ type AsyncUploadQueuedResponse = {
 type AsyncUploadJobResponse<T> = {
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
   stage?: string;
+  progress_data?: {
+    total_variants?: number;
+    variant_index?: number;
+    variant_total?: number;
+    variant_name?: string;
+    variant_description?: string;
+    video_confidence?: number;
+    audio_confidence?: number;
+    combined_confidence?: number;
+    is_detected?: boolean;
+    pattern_score?: number;
+    adaptive_threshold?: number;
+    error?: string;
+  };
   result?: T;
   error?: string;
 };
@@ -36,6 +50,20 @@ type AsyncUploadJobResponse<T> = {
 type AsyncJobProgress = {
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
   stage?: string;
+  progress_data?: {
+    total_variants?: number;
+    variant_index?: number;
+    variant_total?: number;
+    variant_name?: string;
+    variant_description?: string;
+    video_confidence?: number;
+    audio_confidence?: number;
+    combined_confidence?: number;
+    is_detected?: boolean;
+    pattern_score?: number;
+    adaptive_threshold?: number;
+    error?: string;
+  };
 };
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -58,7 +86,7 @@ async function waitForAsyncJob<T>(jobId: string, onProgress?: (progress: AsyncJo
     }
 
     if (onProgress) {
-      onProgress({ status: data.status, stage: data.stage });
+      onProgress({ status: data.status, stage: data.stage, progress_data: data.progress_data });
     }
 
     if (data.status === "completed") {

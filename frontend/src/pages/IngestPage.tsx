@@ -18,6 +18,21 @@ export default function IngestPage() {
   const [jobStage, setJobStage] = useState<string | null>(null);
   const [benchmarkResult, setBenchmarkResult] = useState<PiracyBenchmarkResponse | null>(null);
   const [progress, setProgress] = useState({ video: 91, audio: 64 });
+  const [variantProgress, setVariantProgress] = useState<{
+    current: number;
+    total: number;
+    currentVariant: string;
+    currentDescription: string;
+    stage: 'generating' | 'analyzing' | 'complete' | null;
+    results: Array<{
+      name: string;
+      description: string;
+      videoConfidence: number;
+      audioConfidence: number;
+      combinedConfidence: number;
+      isDetected: boolean;
+    }>;
+  } | null>(null);
   const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
   const [health, setHealth] = useState<HealthApi | null>(null);
   const [recentConfidence, setRecentConfidence] = useState<Array<{ label: string; value: number }>>([]);
@@ -178,6 +193,7 @@ export default function IngestPage() {
     setError(null);
     setMessage(null);
     setJobStage("queued");
+    setVariantProgress(null);
 
     try {
       const result = await runPiracyBenchmark({
@@ -187,11 +203,78 @@ export default function IngestPage() {
         file,
       }, {
         onProgress: (progress) => {
-          setJobStage(progress.stage ?? progress.status);
+          const stage = progress.stage ?? progress.status;
+          setJobStage(stage);
+          
+          if (progress.progress_data) {
+            const data = progress.progress_data;
+            
+            if (stage === 'generating_variants') {
+              setVariantProgress({
+                current: 0,
+                total: data.total_variants || 17,
+                currentVariant: '',
+                currentDescription: 'Initializing variant generation...',
+                stage: 'generating',
+                results: [],
+              });
+            } else if (stage === 'variant_generating') {
+              setVariantProgress(prev => prev ? {
+                ...prev,
+                current: data.variant_index || 0,
+                total: data.variant_total || 17,
+                currentVariant: data.variant_name || '',
+                currentDescription: data.variant_description || '',
+                stage: 'generating',
+              } : null);
+            } else if (stage === 'variant_generated') {
+              setVariantProgress(prev => prev ? {
+                ...prev,
+                current: data.variant_index || 0,
+                total: data.variant_total || 17,
+                currentVariant: data.variant_name || '',
+                currentDescription: `✓ ${data.variant_description || ''}`,
+                stage: 'generating',
+              } : null);
+            } else if (stage === 'variant_analyzing') {
+              setVariantProgress(prev => prev ? {
+                ...prev,
+                current: data.variant_index || 0,
+                total: data.variant_total || 17,
+                currentVariant: data.variant_name || '',
+                currentDescription: `Analyzing: ${data.variant_description || ''}`,
+                stage: 'analyzing',
+              } : null);
+            } else if (stage === 'variant_analyzed') {
+              setVariantProgress(prev => {
+                const newResults = [...(prev?.results || [])];
+                newResults.push({
+                  name: data.variant_name || '',
+                  description: data.variant_description || '',
+                  videoConfidence: data.video_confidence || 0,
+                  audioConfidence: data.audio_confidence || 0,
+                  combinedConfidence: data.combined_confidence || 0,
+                  isDetected: data.is_detected || false,
+                });
+                
+                return prev ? {
+                  ...prev,
+                  current: data.variant_index || 0,
+                  total: data.variant_total || 17,
+                  currentVariant: data.variant_name || '',
+                  currentDescription: `${data.is_detected ? '🔴 DETECTED' : '✓ Analyzed'}: ${data.variant_description || ''} (${data.combined_confidence?.toFixed(1)}%)`,
+                  stage: 'analyzing',
+                  results: newResults,
+                } : null;
+              });
+            }
+          }
         },
       });
 
       setBenchmarkResult(result);
+      setVariantProgress(prev => prev ? { ...prev, stage: 'complete' } : null);
+      
       const weakVariant = result.variants
         .slice()
         .sort((a, b) => a.combined_confidence - b.combined_confidence)[0];
@@ -208,6 +291,7 @@ export default function IngestPage() {
           ? benchmarkError.message
           : "Benchmark failed. Verify backend and try again.",
       );
+      setVariantProgress(null);
     } finally {
       setJobStage(null);
       setBenchmarkLoading(false);
@@ -318,6 +402,53 @@ export default function IngestPage() {
                   <div className="rounded-2xl border border-cyan/20 bg-cyan/5 px-5 py-4 text-xs font-bold uppercase tracking-widest text-cyan leading-relaxed">
                     Background Stage: {jobStage.replace(/_/g, " ")}
                   </div>
+                ) : null}
+                {variantProgress ? (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="rounded-2xl border border-neon/20 bg-slate-950/60 p-6 space-y-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="font-display text-sm font-bold uppercase tracking-[0.2em] text-neon">
+                        {variantProgress.stage === 'generating' ? '⚙️ Generating Variants' : 
+                         variantProgress.stage === 'analyzing' ? '🔬 Analyzing Variants' : 
+                         '✅ Benchmark Complete'}
+                      </div>
+                      <div className="font-mono text-xs text-slate-400">
+                        {variantProgress.current}/{variantProgress.total}
+                      </div>
+                    </div>
+                    
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-900/50">
+                      <motion.div
+                        className="h-full rounded-full bg-gradient-to-r from-neon/40 via-neon to-neon shadow-[0_0_15px_rgba(212,255,0,0.3)]"
+                        animate={{ width: `${(variantProgress.current / variantProgress.total) * 100}%` }}
+                        transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+                      />
+                    </div>
+                    
+                    {variantProgress.currentVariant && (
+                      <div className="text-xs font-medium text-slate-300 leading-relaxed">
+                        <span className="text-cyan font-bold">{variantProgress.currentVariant}</span>: {variantProgress.currentDescription}
+                      </div>
+                    )}
+                    
+                    {variantProgress.results.length > 0 && (
+                      <div className="mt-4 max-h-48 overflow-y-auto space-y-2 border-t border-white/5 pt-4">
+                        {variantProgress.results.slice(-5).reverse().map((result, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-[10px] font-medium">
+                            <span className={result.isDetected ? 'text-neon' : 'text-slate-500'}>
+                              {result.isDetected ? '🔴' : '✓'} {result.description}
+                            </span>
+                            <span className="font-mono text-cyan">
+                              {result.combinedConfidence.toFixed(1)}%
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
                 ) : null}
                 {error ? (
                   <motion.div 
