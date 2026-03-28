@@ -203,11 +203,13 @@ export default function IngestPage() {
         file,
       }, {
         onProgress: (progress) => {
+          console.log('Progress received:', progress);
           const stage = progress.stage ?? progress.status;
           setJobStage(stage);
           
           if (progress.progress_data) {
             const data = progress.progress_data;
+            console.log('Progress data:', data);
             
             if (stage === 'generating_variants') {
               setVariantProgress({
