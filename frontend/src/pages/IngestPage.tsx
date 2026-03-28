@@ -8,9 +8,10 @@ import type { HealthApi, MetricsSummaryApi, PiracyBenchmarkResponse } from "../t
 
 export default function IngestPage() {
   const [file, setFile] = useState<File | null>(null);
-  const [leagueName, setLeagueName] = useState("EURO_PREMIER_CHAMPIONSHIP");
-  const [matchId, setMatchId] = useState("UUID_88392_B");
+  const [leagueName, setLeagueName] = useState("");
+  const [matchId, setMatchId] = useState("");
   const [broadcastDate, setBroadcastDate] = useState(new Date().toISOString().slice(0, 10));
+  const [contentTitle, setContentTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -36,6 +37,35 @@ export default function IngestPage() {
   const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
   const [health, setHealth] = useState<HealthApi | null>(null);
   const [recentConfidence, setRecentConfidence] = useState<Array<{ label: string; value: number }>>([]);
+  // Auto-detect content info from filename
+  useEffect(() => {
+    if (file) {
+      const filename = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
+      
+      // Extract title from filename if fields are empty
+      if (!contentTitle) {
+        setContentTitle(filename);
+      }
+      if (!matchId) {
+        // Generate a simple match ID from filename
+        const id = filename.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
+        setMatchId(id);
+      }
+      if (!leagueName) {
+        // Try to detect league from common patterns
+        if (filename.toLowerCase().includes('formula') || filename.toLowerCase().includes('f1')) {
+          setLeagueName("FORMULA_1");
+        } else if (filename.toLowerCase().includes('premier') || filename.toLowerCase().includes('epl')) {
+          setLeagueName("PREMIER_LEAGUE");
+        } else if (filename.toLowerCase().includes('champions') || filename.toLowerCase().includes('ucl')) {
+          setLeagueName("CHAMPIONS_LEAGUE");
+        } else {
+          setLeagueName("GENERAL_SPORTS");
+        }
+      }
+    }
+  }, [file, contentTitle, matchId, leagueName]);
+
   const sortedBenchmarkVariants = useMemo(
     () =>
       benchmarkResult
@@ -152,9 +182,9 @@ export default function IngestPage() {
         }));
       }, 220);
 
-      const response = await generateFingerprint({
-        title: matchId,
-        league: leagueName,
+      const result = await generateFingerprint({
+        title: contentTitle || matchId || file?.name || "Protected Content",
+        league: leagueName || "UNKNOWN_LEAGUE",
         broadcastDate,
         file,
       }, {
@@ -165,7 +195,7 @@ export default function IngestPage() {
 
       setProgress({ video: 100, audio: 100 });
       setMessage(
-        `${response.message}. Content ID ${response.content_id} indexed with ${response.video_hash_count} protected hashes.`,
+        `${result.message}. Content ID ${result.content_id} indexed with ${result.video_hash_count} protected hashes.`,
       );
       const refreshedSummary = await fetchMetricsSummary();
       setSummary(refreshedSummary);
@@ -197,8 +227,8 @@ export default function IngestPage() {
 
     try {
       const result = await runPiracyBenchmark({
-        title: matchId,
-        league: leagueName,
+        title: contentTitle || matchId || file?.name || "Protected Content",
+        league: leagueName || "UNKNOWN_LEAGUE",
         broadcastDate,
         file,
       }, {
@@ -329,6 +359,16 @@ export default function IngestPage() {
               </div>
 
               <div className="space-y-6">
+                <label className="block">
+                  <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Content Title</span>
+                  <input
+                    className="field-shell w-full"
+                    placeholder="Auto-detected from filename"
+                    value={contentTitle}
+                    onChange={(event) => setContentTitle(event.target.value)}
+                  />
+                </label>
+
                 <label className="block">
                   <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">League Name</span>
                   <input

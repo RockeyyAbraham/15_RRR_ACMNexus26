@@ -387,6 +387,7 @@ def run_piracy_benchmark(
     cancel_cb: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
     def emit_progress(stage: str, data: Dict[str, Any] = None):
+        print(f"[DEBUG] Emitting progress: {stage}, data: {data}")
         if progress_cb:
             progress_cb(stage, data or {})
 

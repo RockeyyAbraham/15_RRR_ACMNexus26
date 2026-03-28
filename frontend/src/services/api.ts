@@ -74,8 +74,9 @@ async function waitForAsyncJob<T>(jobId: string, onProgress?: (progress: AsyncJo
   while (Date.now() - started < POLL_TIMEOUT_MS) {
     let data: AsyncUploadJobResponse<T>;
     try {
-      const response = await api.get<AsyncUploadJobResponse<T>>(`/jobs/${jobId}`);
+      const response = await axios.get<AsyncUploadJobResponse<T>>(`${baseUrl}/jobs/${jobId}`);
       data = response.data;
+      console.log(`[DEBUG] Job ${jobId} status:`, data);
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
         throw new Error(
@@ -86,6 +87,7 @@ async function waitForAsyncJob<T>(jobId: string, onProgress?: (progress: AsyncJo
     }
 
     if (onProgress) {
+      console.log(`[DEBUG] Calling onProgress with:`, { status: data.status, stage: data.stage, progress_data: data.progress_data });
       onProgress({ status: data.status, stage: data.stage, progress_data: data.progress_data });
     }
 
