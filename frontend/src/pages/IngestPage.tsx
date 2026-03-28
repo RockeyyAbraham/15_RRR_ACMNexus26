@@ -15,6 +15,7 @@ export default function IngestPage() {
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [jobStage, setJobStage] = useState<string | null>(null);
   const [benchmarkResult, setBenchmarkResult] = useState<PiracyBenchmarkResponse | null>(null);
   const [progress, setProgress] = useState({ video: 91, audio: 64 });
   const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
@@ -105,6 +106,7 @@ export default function IngestPage() {
     setLoading(true);
     setError(null);
     setMessage(null);
+    setJobStage("queued");
     setProgress({ video: 28, audio: 12 });
 
     let interval: number | undefined;
@@ -122,6 +124,10 @@ export default function IngestPage() {
         league: leagueName,
         broadcastDate,
         file,
+      }, {
+        onProgress: (progress) => {
+          setJobStage(progress.stage ?? progress.status);
+        },
       });
 
       setProgress({ video: 100, audio: 100 });
@@ -138,6 +144,7 @@ export default function IngestPage() {
       if (interval) {
         window.clearInterval(interval);
       }
+      setJobStage(null);
       setLoading(false);
     }
   };
@@ -152,6 +159,7 @@ export default function IngestPage() {
     setBenchmarkLoading(true);
     setError(null);
     setMessage(null);
+    setJobStage("queued");
 
     try {
       const result = await runPiracyBenchmark({
@@ -159,6 +167,10 @@ export default function IngestPage() {
         league: leagueName,
         broadcastDate,
         file,
+      }, {
+        onProgress: (progress) => {
+          setJobStage(progress.stage ?? progress.status);
+        },
       });
 
       setBenchmarkResult(result);
@@ -179,6 +191,7 @@ export default function IngestPage() {
           : "Benchmark failed. Verify backend and try again.",
       );
     } finally {
+      setJobStage(null);
       setBenchmarkLoading(false);
     }
   };
@@ -282,6 +295,11 @@ export default function IngestPage() {
                   >
                     {message}
                   </motion.div>
+                ) : null}
+                {jobStage ? (
+                  <div className="rounded-2xl border border-cyan/20 bg-cyan/5 px-5 py-4 text-xs font-bold uppercase tracking-widest text-cyan leading-relaxed">
+                    Background Stage: {jobStage.replace(/_/g, " ")}
+                  </div>
                 ) : null}
                 {error ? (
                   <motion.div 

@@ -28,13 +28,19 @@ type AsyncUploadQueuedResponse = {
 
 type AsyncUploadJobResponse<T> = {
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  stage?: string;
   result?: T;
   error?: string;
 };
 
+type AsyncJobProgress = {
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  stage?: string;
+};
+
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
-async function waitForAsyncJob<T>(jobId: string): Promise<T> {
+async function waitForAsyncJob<T>(jobId: string, onProgress?: (progress: AsyncJobProgress) => void): Promise<T> {
   const started = Date.now();
 
   while (Date.now() - started < POLL_TIMEOUT_MS) {
@@ -49,6 +55,10 @@ async function waitForAsyncJob<T>(jobId: string): Promise<T> {
         );
       }
       throw error;
+    }
+
+    if (onProgress) {
+      onProgress({ status: data.status, stage: data.stage });
     }
 
     if (data.status === "completed") {
@@ -77,7 +87,7 @@ export async function generateFingerprint({
   league,
   broadcastDate,
   file,
-}: UploadPayload): Promise<FingerprintResponse> {
+}: UploadPayload, options?: { onProgress?: (progress: AsyncJobProgress) => void }): Promise<FingerprintResponse> {
   if (!file) {
     throw new Error("No file provided");
   }
@@ -92,7 +102,7 @@ export async function generateFingerprint({
     timeout: 30000,
   });
 
-  const finalResult = await waitForAsyncJob<FingerprintResponse>(data.job_id);
+  const finalResult = await waitForAsyncJob<FingerprintResponse>(data.job_id, options?.onProgress);
 
   return finalResult;
 }
@@ -102,7 +112,7 @@ export async function runPiracyBenchmark({
   league,
   broadcastDate,
   file,
-}: UploadPayload): Promise<PiracyBenchmarkResponse> {
+}: UploadPayload, options?: { onProgress?: (progress: AsyncJobProgress) => void }): Promise<PiracyBenchmarkResponse> {
   if (!file) {
     throw new Error("No file provided");
   }
@@ -117,7 +127,7 @@ export async function runPiracyBenchmark({
     timeout: 30000,
   });
 
-  return waitForAsyncJob<PiracyBenchmarkResponse>(data.job_id);
+  return waitForAsyncJob<PiracyBenchmarkResponse>(data.job_id, options?.onProgress);
 }
 
 export async function fetchDetections(): Promise<DetectionApiItem[]> {

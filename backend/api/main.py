@@ -503,6 +503,7 @@ def process_protected_video(video_path: Path, title: str, league: str, progress_
         "content_id": content_id,
         "video_hash_count": len(video_hashes),
         "audio_hash_extracted": audio_hash is not None,
+        "duration_seconds": video_metadata.get("duration_seconds", 0),
         "processing_time_seconds": video_metadata["processing_time_seconds"],
         "latency_ms": round(elapsed * 1000, 2),
     }
@@ -669,9 +670,18 @@ def process_piracy_benchmark(video_path: Path, title: str, league: str, progress
         cancel_cb=cancel_cb,
     )
 
+    duration_seconds = float(protected_result.get("duration_seconds", 0) or 0)
+    split_chunk_seconds = 5
+    estimated_chunks = int((duration_seconds + split_chunk_seconds - 1) // split_chunk_seconds) if duration_seconds > 0 else 0
+
     return {
         "message": "Piracy benchmark completed",
         "protected": protected_result,
+        "split_plan": {
+            "chunk_duration_seconds": split_chunk_seconds,
+            "estimated_chunks": estimated_chunks,
+            "duration_seconds": round(duration_seconds, 2),
+        },
         **benchmark_result,
     }
 
