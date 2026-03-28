@@ -18,7 +18,6 @@ import logging
 import sqlite3
 import threading
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 from flask import Flask, request, jsonify, send_file
@@ -87,8 +86,6 @@ NOTICES_DIR = BACKEND_DIR.parent / "notices"
 
 AUTO_ACTION_THRESHOLD = float(os.getenv("AUTO_ACTION_THRESHOLD", "85"))
 MANUAL_REVIEW_THRESHOLD = float(os.getenv("MANUAL_REVIEW_THRESHOLD", "75"))
-MAX_ASYNC_WORKERS = int(os.getenv("MAX_ASYNC_WORKERS", "2"))
-MAX_QUEUE_SIZE = int(os.getenv("MAX_QUEUE_SIZE", "20"))
 FLASK_DEBUG_MODE = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 hash_engine = None
@@ -104,9 +101,6 @@ generator_init_error = None
 NOTICES_DIR.mkdir(parents=True, exist_ok=True)
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-executor = ThreadPoolExecutor(max_workers=MAX_ASYNC_WORKERS)
-jobs = {}
-jobs_lock = threading.Lock()
 monitor_sessions = {}
 monitor_lock = threading.Lock()
 
@@ -189,65 +183,7 @@ def log_event(event_type: str, **payload):
     telemetry_logger.info(json.dumps(event, default=str))
 
 
-def create_job(job_type: str, payload: dict):
-    job_id = str(uuid.uuid4())
-    with jobs_lock:
-        jobs[job_id] = {
-            "job_id": job_id,
-            "job_type": job_type,
-            "status": "queued",
-            "stage": "queued",
-            "progress_data": None,
-            "cancel_requested": False,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
-            "payload": payload,
-            "result": None,
-            "error": None,
-        }
-    return job_id
 
-
-def update_job(job_id: str, **updates):
-    with jobs_lock:
-        if job_id not in jobs:
-            return
-        print(f"[DEBUG] Updating job {job_id} with: {updates}")
-        jobs[job_id].update(updates)
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
-        print(f"[DEBUG] Job {job_id} now has: {jobs[job_id]}")
-
-
-def get_job(job_id: str):
-    with jobs_lock:
-        return jobs.get(job_id)
-
-
-def get_active_job_count():
-    with jobs_lock:
-        return sum(1 for j in jobs.values() if j.get("status") in ["queued", "running"])
-
-
-def request_job_cancel(job_id: str):
-    with jobs_lock:
-        job = jobs.get(job_id)
-        if not job:
-            return None
-        if job.get("status") in ["completed", "failed", "cancelled"]:
-            return job
-        job["cancel_requested"] = True
-        if job.get("status") == "queued":
-            job["status"] = "cancelled"
-            job["stage"] = "cancelled"
-        else:
-            job["stage"] = "cancel_requested"
-        job["updated_at"] = datetime.now().isoformat()
-        return job
-
-
-def should_abort(job_id: str):
-    job = get_job(job_id)
-    return bool(job and job.get("cancel_requested"))
 
 
 def classify_detection_tier(score: float):
@@ -801,103 +737,6 @@ def process_piracy_benchmark(video_path: Path, title: str, league: str, progress
     }
 
 
-def submit_background_job(job_id: str, job_type: str, video_path: Path, payload: dict):
-    job = get_job(job_id)
-    if not job or job.get("status") == "cancelled":
-        return
-
-    update_job(job_id, status="running", stage="starting", started_at=datetime.now().isoformat())
-
-    try:
-        if job_type == "protected_upload":
-            result = process_protected_video(
-                video_path=video_path,
-                title=payload.get("title", "Unknown"),
-                league=payload.get("league", "Unknown"),
-                progress_cb=lambda s: update_job(job_id, stage=s),
-                cancel_cb=lambda: should_abort(job_id),
-            )
-        elif job_type == "suspect_upload":
-            result = process_suspect_video(
-                video_path=video_path,
-                stream_url=payload.get("stream_url", "unknown"),
-                progress_cb=lambda s: update_job(job_id, stage=s),
-                cancel_cb=lambda: should_abort(job_id),
-            )
-        elif job_type == "candidate_verify":
-            candidate_id = payload.get("candidate_id")
-            candidate_url = payload.get("candidate_url", "")
-            update_job(job_id, stage="resolving_media")
-            media_path = resolve_candidate_media(candidate_url)
-            if media_path is None:
-                result = {
-                    "message": "Candidate queued but media download/clip resolver not available for this URL.",
-                    "candidate_id": candidate_id,
-                    "candidate_url": candidate_url,
-                    "detections": [],
-                }
-            else:
-                result = process_suspect_video(
-                    video_path=media_path,
-                    stream_url=candidate_url,
-                    progress_cb=lambda s: update_job(job_id, stage=s),
-                    cancel_cb=lambda: should_abort(job_id),
-                )
-                if media_path != video_path:
-                    try:
-                        if media_path.exists():
-                            media_path.unlink()
-                    except Exception:
-                        pass
-        elif job_type == "piracy_benchmark":
-            def benchmark_progress_cb(stage, data=None):
-                print(f"[DEBUG] Benchmark progress: {stage}, data: {data}")
-                if data:
-                    update_job(job_id, stage=stage, progress_data=data)
-                else:
-                    update_job(job_id, stage=stage)
-            
-            result = process_piracy_benchmark(
-                video_path=video_path,
-                title=payload.get("title", "Protected Benchmark Content"),
-                league=payload.get("league", "Benchmark League"),
-                progress_cb=benchmark_progress_cb,
-                cancel_cb=lambda: should_abort(job_id),
-            )
-        else:
-            raise ValueError(f"Unsupported job type: {job_type}")
-
-        if should_abort(job_id):
-            update_job(job_id, status="cancelled", stage="cancelled")
-            if payload.get("candidate_id"):
-                update_candidate_record(payload["candidate_id"], status="cancelled")
-        else:
-            update_job(job_id, status="completed", stage="completed", result=result, completed_at=datetime.now().isoformat())
-            if payload.get("candidate_id"):
-                if result.get("detections"):
-                    update_candidate_record(payload["candidate_id"], status="verified_piracy")
-                else:
-                    update_candidate_record(payload["candidate_id"], status="verified_clean")
-
-    except Exception as e:
-        print(f"[DEBUG] Job {job_id} failed with error: {e}")
-        import traceback
-        traceback.print_exc()
-        if "cancelled" in str(e).lower() or should_abort(job_id):
-            update_job(job_id, status="cancelled", stage="cancelled")
-            if payload.get("candidate_id"):
-                update_candidate_record(payload["candidate_id"], status="cancelled")
-        else:
-            update_job(job_id, status="failed", stage="failed", error=str(e))
-            if payload.get("candidate_id"):
-                update_candidate_record(payload["candidate_id"], status="verification_failed", notes=f"verification error: {e}")
-
-    finally:
-        try:
-            if os.path.exists(video_path):
-                os.remove(video_path)
-        except Exception:
-            pass
 
 
 init_db()
@@ -955,66 +794,11 @@ def upload_suspect():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/upload/protected/async", methods=["POST"])
-def upload_protected_async():
-    if get_active_job_count() >= MAX_QUEUE_SIZE:
-        return jsonify({"error": "Async queue is full. Try again shortly."}), 429
-    if "video" not in request.files:
-        return jsonify({"error": "No video file provided"}), 400
-
-    video_file = request.files["video"]
-    if video_file.filename == "":
-        return jsonify({"error": "No selected file"}), 400
-
-    video_path = TEMP_DIR / f"{uuid.uuid4()}_{video_file.filename}"
-    video_file.save(video_path)
-
-    payload = {
-        "title": request.form.get("title", "Unknown"),
-        "league": request.form.get("league", "Unknown"),
-        "filename": video_file.filename,
-    }
-    job_id = create_job("protected_upload", payload)
-    executor.submit(submit_background_job, job_id, "protected_upload", video_path, payload)
-
-    return jsonify({"job_id": job_id, "status": "queued", "job_type": "protected_upload"}), 202
-
-
-@app.route("/upload/suspect/async", methods=["POST"])
-def upload_suspect_async():
-    if get_active_job_count() >= MAX_QUEUE_SIZE:
-        return jsonify({"error": "Async queue is full. Try again shortly."}), 429
-    if "video" not in request.files:
-        return jsonify({"error": "No video file provided"}), 400
-
-    video_file = request.files["video"]
-    if video_file.filename == "":
-        return jsonify({"error": "No selected file"}), 400
-
-    video_path = TEMP_DIR / f"{uuid.uuid4()}_{video_file.filename}"
-    video_file.save(video_path)
-
-    payload = {
-        "stream_url": request.form.get("stream_url", "unknown"),
-        "filename": video_file.filename,
-        "candidate_id": request.form.get("candidate_id"),
-    }
-    job_id = create_job("suspect_upload", payload)
-    executor.submit(submit_background_job, job_id, "suspect_upload", video_path, payload)
-
-    candidate_id = request.form.get("candidate_id")
-    if candidate_id:
-        update_candidate_record(candidate_id, status="verifying", verification_job_id=job_id)
-
-    return jsonify({"job_id": job_id, "status": "queued", "job_type": "suspect_upload"}), 202
 
 
 @app.route("/analysis/piracy-benchmark/async", methods=["POST"])
 def run_piracy_benchmark_async():
     """Main-project API: process protected video and evaluate 17 generated piracy variants."""
-    if get_active_job_count() >= MAX_QUEUE_SIZE:
-        return jsonify({"error": "Async queue is full. Try again shortly."}), 429
-
     if "video" not in request.files:
         return jsonify({"error": "No video file provided"}), 400
 
@@ -1025,33 +809,39 @@ def run_piracy_benchmark_async():
     video_path = TEMP_DIR / f"{uuid.uuid4()}_{video_file.filename}"
     video_file.save(video_path)
 
-    payload = {
-        "title": request.form.get("title", Path(video_file.filename).stem),
-        "league": request.form.get("league", "BENCHMARK"),
-        "filename": video_file.filename,
-    }
+    title = request.form.get("title", Path(video_file.filename).stem)
+    league = request.form.get("league", "BENCHMARK")
+    
+    print(f"\n{'=' * 80}")
+    print(f"STARTING PIRACY BENCHMARK: {title}")
+    print(f"{'=' * 80}")
+    
+    try:
+        # Run benchmark synchronously with direct progress updates
+        def progress_callback(stage, data=None):
+            print(f"[PROGRESS] {stage}: {data}")
+        
+        result = process_piracy_benchmark(
+            video_path=video_path,
+            title=title,
+            league=league,
+            progress_cb=progress_callback,
+            cancel_cb=None
+        )
+        
+        print(f"\n{'=' * 80}")
+        print(f"PIRACY BENCHMARK COMPLETED")
+        print(f"{'=' * 80}")
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        print(f"ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
-    job_id = create_job("piracy_benchmark", payload)
-    executor.submit(submit_background_job, job_id, "piracy_benchmark", video_path, payload)
 
-    return jsonify({"job_id": job_id, "status": "queued", "job_type": "piracy_benchmark"}), 202
-
-
-@app.route("/jobs/<job_id>", methods=["GET"])
-def get_job_status(job_id):
-    job = get_job(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
-    print(f"[DEBUG] Job status requested for {job_id}: {job}")
-    return jsonify(job), 200
-
-
-@app.route("/jobs/<job_id>/cancel", methods=["POST"])
-def cancel_job(job_id):
-    job = request_job_cancel(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
-    return jsonify(job), 200
 
 
 @app.route("/candidates/submit", methods=["POST"])
@@ -1111,21 +901,9 @@ def submit_candidate():
             status=status,
         )
 
-        verification_job_id = None
         if status == "queued":
-            if get_active_job_count() < MAX_QUEUE_SIZE:
-                payload = {
-                    "candidate_id": candidate_id,
-                    "candidate_url": url,
-                    "stream_url": url,
-                }
-                verification_job_id = create_job("candidate_verify", payload)
-                update_candidate_record(candidate_id, status="verifying", verification_job_id=verification_job_id)
-                placeholder = TEMP_DIR / f"candidate_placeholder_{verification_job_id}.tmp"
-                placeholder.write_text("candidate-verification")
-                executor.submit(submit_background_job, verification_job_id, "candidate_verify", placeholder, payload)
-            else:
-                update_candidate_record(candidate_id, notes="queue full: verification deferred")
+            # For now, just mark as queued - verification can be done manually
+            update_candidate_record(candidate_id, notes="Ready for manual verification")
 
         return jsonify(
             {
@@ -1133,8 +911,7 @@ def submit_candidate():
                 "url": url,
                 "platform": platform,
                 "suspicion_score": round(suspicion_score, 3),
-                "status": "verifying" if verification_job_id else status,
-                "verification_job_id": verification_job_id,
+                "status": status,
                 "triage_thresholds": {
                     "discard": 0.55,
                     "watch_list": 0.75,

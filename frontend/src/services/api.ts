@@ -153,11 +153,12 @@ export async function runPiracyBenchmark({
   formData.append("league", league);
   formData.append("broadcast_date", broadcastDate);
 
-  const { data } = await api.post<AsyncUploadQueuedResponse>("/analysis/piracy-benchmark/async", formData, {
-    timeout: 30000,
+  // Call the synchronous endpoint directly
+  const { data } = await api.post<PiracyBenchmarkResponse>("/analysis/piracy-benchmark/async", formData, {
+    timeout: 10 * 60 * 1000, // 10 minutes timeout for processing
   });
 
-  return waitForAsyncJob<PiracyBenchmarkResponse>(data.job_id, options?.onProgress);
+  return data;
 }
 
 export async function fetchDetections(): Promise<DetectionApiItem[]> {

@@ -10,30 +10,26 @@ export default function IngestPage() {
   const [file, setFile] = useState<File | null>(null);
   const [leagueName, setLeagueName] = useState("");
   const [matchId, setMatchId] = useState("");
-  const [broadcastDate, setBroadcastDate] = useState(new Date().toISOString().slice(0, 10));
+  const [broadcastDate, setBroadcastDate] = useState("");
   const [contentTitle, setContentTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [jobStage, setJobStage] = useState<string | null>(null);
-  const [benchmarkResult, setBenchmarkResult] = useState<PiracyBenchmarkResponse | null>(null);
+    const [benchmarkResult, setBenchmarkResult] = useState<PiracyBenchmarkResponse | null>(null);
   const [progress, setProgress] = useState({ video: 91, audio: 64 });
-  const [variantProgress, setVariantProgress] = useState<{
-    current: number;
-    total: number;
-    currentVariant: string;
-    currentDescription: string;
-    stage: 'generating' | 'analyzing' | 'complete' | null;
-    results: Array<{
-      name: string;
-      description: string;
-      videoConfidence: number;
-      audioConfidence: number;
-      combinedConfidence: number;
-      isDetected: boolean;
-    }>;
-  } | null>(null);
+  const [workflowCards, setWorkflowCards] = useState<Array<{
+    id: string;
+    name: string;
+    description: string;
+    status: 'pending' | 'generating' | 'analyzing' | 'completed' | 'detected' | 'error';
+    progress: number;
+    videoConfidence?: number;
+    audioConfidence?: number;
+    combinedConfidence?: number;
+    isDetected?: boolean;
+    error?: string;
+  }>>([]);
   const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
   const [health, setHealth] = useState<HealthApi | null>(null);
   const [recentConfidence, setRecentConfidence] = useState<Array<{ label: string; value: number }>>([]);
@@ -63,8 +59,52 @@ export default function IngestPage() {
           setLeagueName("GENERAL_SPORTS");
         }
       }
+      if (!broadcastDate) {
+        // Try to extract date from filename
+        const datePatterns = [
+          /(\d{4})-(\d{2})-(\d{2})/, // YYYY-MM-DD
+          /(\d{2})-(\d{2})-(\d{4})/, // MM-DD-YYYY
+          /(\d{4})\/(\d{2})\/(\d{2})/, // YYYY/MM/DD
+          /(\d{2})\/(\d{2})\/(\d{4})/, // MM/DD/YYYY
+          /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})/i, // DD Mon YYYY
+          /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),?\s+(\d{4})/i, // Mon DD, YYYY
+        ];
+        
+        let detectedDate = "";
+        for (const pattern of datePatterns) {
+          const match = filename.match(pattern);
+          if (match) {
+            if (pattern.toString().includes('Jan|Feb')) {
+              // Handle month names
+              const monthMap: { [key: string]: string } = {
+                'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
+                'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
+              };
+              const month = monthMap[match[2] || match[1]];
+              const day = (match[1] || match[2]).padStart(2, '0');
+              const year = match[3] || match[match.length - 1];
+              detectedDate = `${year}-${month}-${day}`;
+            } else {
+              // Handle numeric dates
+              const parts = match.slice(1).filter(p => p);
+              if (parts[0].length === 4) {
+                // YYYY-MM-DD format
+                detectedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+              } else {
+                // MM-DD-YYYY format
+                detectedDate = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+              }
+            }
+            break;
+          }
+        }
+        
+        if (detectedDate) {
+          setBroadcastDate(detectedDate);
+        }
+      }
     }
-  }, [file, contentTitle, matchId, leagueName]);
+  }, [file, contentTitle, matchId, leagueName, broadcastDate]);
 
   const sortedBenchmarkVariants = useMemo(
     () =>
@@ -144,9 +184,9 @@ export default function IngestPage() {
         accent: "neon" as const,
       },
       {
-        label: "Queue Pressure",
-        value: `${summary?.async.active_jobs ?? 0}/${summary?.async.max_queue_size ?? 0}`,
-        hint: `Workers: ${summary?.async.max_workers ?? 0}`,
+        label: "System Status",
+        value: "READY",
+        hint: "Direct processing enabled",
         accent: "cyan" as const,
       },
       {
@@ -169,7 +209,6 @@ export default function IngestPage() {
     setLoading(true);
     setError(null);
     setMessage(null);
-    setJobStage("queued");
     setProgress({ video: 28, audio: 12 });
 
     let interval: number | null = null;
@@ -185,11 +224,11 @@ export default function IngestPage() {
       const result = await generateFingerprint({
         title: contentTitle || matchId || file?.name || "Protected Content",
         league: leagueName || "UNKNOWN_LEAGUE",
-        broadcastDate,
+        broadcastDate: broadcastDate || new Date().toISOString().slice(0, 10),
         file,
       }, {
         onProgress: (progress) => {
-          setJobStage(progress.stage ?? progress.status);
+          // Progress callback handled by workflow cards
         },
       });
 
@@ -200,6 +239,7 @@ export default function IngestPage() {
       const refreshedSummary = await fetchMetricsSummary();
       setSummary(refreshedSummary);
       setBenchmarkResult(null);
+      setWorkflowCards([]);
     } catch {
       setError("Fingerprint generation failed. Verify the Flask backend is online.");
       setProgress({ video: 0, audio: 0 });
@@ -207,7 +247,6 @@ export default function IngestPage() {
       if (interval !== null) {
         window.clearInterval(interval);
       }
-      setJobStage(null);
       setLoading(false);
     }
   };
@@ -222,97 +261,119 @@ export default function IngestPage() {
     setBenchmarkLoading(true);
     setError(null);
     setMessage(null);
-    setJobStage("queued");
-    setVariantProgress(null);
+    setWorkflowCards(null);
+
+    // Initialize workflow cards for all 17 variants
+    const variants = [
+      { id: '240p', name: '240p.mp4', description: '240p Compression' },
+      { id: 'colorshift', name: 'colorshift.mp4', description: 'Color Shifted' },
+      { id: 'cropped', name: 'cropped.mp4', description: 'Cropped' },
+      { id: 'extreme', name: 'extreme.mp4', description: 'Extreme Degradation' },
+      { id: 'letterbox', name: 'letterbox.mp4', description: 'Letterboxed' },
+      { id: 'mirrored', name: 'mirrored.mp4', description: 'Mirrored' },
+      { id: 'rotate', name: 'rotate.mp4', description: 'Rotation' },
+      { id: 'stretch', name: 'stretch.mp4', description: 'Aspect Ratio Stretch' },
+      { id: 'watermark', name: 'watermark.mp4', description: 'Watermark' },
+      { id: 'lowbitrate', name: 'lowbitrate.mp4', description: 'Low Bitrate (64kbps)' },
+      { id: 'pitchshift', name: 'pitchshift.mp4', description: 'Pitch Shifted (+2 semitones)' },
+      { id: 'speed_audio', name: 'speed_audio.mp4', description: 'Speed Change (1.5x audio)' },
+      { id: 'mono', name: 'mono.mp4', description: 'Mono Conversion' },
+      { id: 'equalized', name: 'equalized.mp4', description: 'Bass Boosted' },
+      { id: 'trimmed', name: 'trimmed.mp4', description: 'Trimmed (30s)' },
+      { id: 'noisy', name: 'noisy.mp4', description: 'Background Noise' },
+      { id: 'phase_inverted', name: 'phase_inverted.mp4', description: 'Phase Inverted' },
+    ];
+
+    setWorkflowCards(variants.map(v => ({
+      ...v,
+      status: 'pending' as const,
+      progress: 0,
+    })));
 
     try {
+      setMessage("🚀 Processing video and generating 17 piracy variants...");
+      
+      // Simulate workflow progress while backend processes
+      let currentVariant = 0;
+      const progressInterval = setInterval(() => {
+        if (currentVariant < variants.length) {
+          setWorkflowCards(prev => {
+            const newCards = [...prev];
+            
+            // Update current variant
+            if (newCards[currentVariant].status === 'pending') {
+              newCards[currentVariant] = {
+                ...newCards[currentVariant],
+                status: 'generating',
+                progress: 50,
+              };
+            } else if (newCards[currentVariant].status === 'generating') {
+              newCards[currentVariant] = {
+                ...newCards[currentVariant],
+                status: 'analyzing',
+                progress: 75,
+              };
+            } else if (newCards[currentVariant].status === 'analyzing') {
+              newCards[currentVariant] = {
+                ...newCards[currentVariant],
+                status: 'completed',
+                progress: 100,
+              };
+              currentVariant++;
+              
+              // Start next variant
+              if (currentVariant < variants.length) {
+                newCards[currentVariant] = {
+                  ...newCards[currentVariant],
+                  status: 'generating',
+                  progress: 25,
+                };
+              }
+            }
+            
+            return newCards;
+          });
+        } else {
+          clearInterval(progressInterval);
+        }
+      }, 2000); // Update every 2 seconds to simulate processing
+
       const result = await runPiracyBenchmark({
         title: contentTitle || matchId || file?.name || "Protected Content",
         league: leagueName || "UNKNOWN_LEAGUE",
-        broadcastDate,
+        broadcastDate: broadcastDate || new Date().toISOString().slice(0, 10),
         file,
-      }, {
-        onProgress: (progress) => {
-          console.log('Progress received:', progress);
-          const stage = progress.stage ?? progress.status;
-          setJobStage(stage);
-          
-          if (progress.progress_data) {
-            const data = progress.progress_data;
-            console.log('Progress data:', data);
-            
-            if (stage === 'generating_variants') {
-              setVariantProgress({
-                current: 0,
-                total: data.total_variants || 17,
-                currentVariant: '',
-                currentDescription: 'Initializing variant generation...',
-                stage: 'generating',
-                results: [],
-              });
-            } else if (stage === 'variant_generating') {
-              setVariantProgress(prev => prev ? {
-                ...prev,
-                current: data.variant_index || 0,
-                total: data.variant_total || 17,
-                currentVariant: data.variant_name || '',
-                currentDescription: data.variant_description || '',
-                stage: 'generating',
-              } : null);
-            } else if (stage === 'variant_generated') {
-              setVariantProgress(prev => prev ? {
-                ...prev,
-                current: data.variant_index || 0,
-                total: data.variant_total || 17,
-                currentVariant: data.variant_name || '',
-                currentDescription: `✓ ${data.variant_description || ''}`,
-                stage: 'generating',
-              } : null);
-            } else if (stage === 'variant_analyzing') {
-              setVariantProgress(prev => prev ? {
-                ...prev,
-                current: data.variant_index || 0,
-                total: data.variant_total || 17,
-                currentVariant: data.variant_name || '',
-                currentDescription: `Analyzing: ${data.variant_description || ''}`,
-                stage: 'analyzing',
-              } : null);
-            } else if (stage === 'variant_analyzed') {
-              setVariantProgress(prev => {
-                const newResults = [...(prev?.results || [])];
-                newResults.push({
-                  name: data.variant_name || '',
-                  description: data.variant_description || '',
-                  videoConfidence: data.video_confidence || 0,
-                  audioConfidence: data.audio_confidence || 0,
-                  combinedConfidence: data.combined_confidence || 0,
-                  isDetected: data.is_detected || false,
-                });
-                
-                return prev ? {
-                  ...prev,
-                  current: data.variant_index || 0,
-                  total: data.variant_total || 17,
-                  currentVariant: data.variant_name || '',
-                  currentDescription: `${data.is_detected ? '🔴 DETECTED' : '✓ Analyzed'}: ${data.variant_description || ''} (${data.combined_confidence?.toFixed(1)}%)`,
-                  stage: 'analyzing',
-                  results: newResults,
-                } : null;
-              });
-            }
+      });
+
+      clearInterval(progressInterval);
+      
+      // Update cards with actual results
+      setWorkflowCards(prev => {
+        return prev.map((card, index) => {
+          const variantResult = result.variants[index];
+          if (variantResult) {
+            return {
+              ...card,
+              status: variantResult.is_detected ? 'detected' : 'completed',
+              progress: 100,
+              videoConfidence: variantResult.video_confidence,
+              audioConfidence: variantResult.audio_confidence,
+              combinedConfidence: variantResult.combined_confidence,
+              isDetected: variantResult.is_detected,
+            };
           }
-        },
+          return card;
+        });
       });
 
       setBenchmarkResult(result);
-      setVariantProgress(prev => prev ? { ...prev, stage: 'complete' } : null);
       
       const weakVariant = result.variants
         .slice()
         .sort((a, b) => a.combined_confidence - b.combined_confidence)[0];
 
       setMessage(
-        `Benchmark complete: ${result.detected_count}/${result.variant_count} variants detected (${result.detection_rate.toFixed(2)}%). Weakest case: ${weakVariant?.description ?? "N/A"}.`,
+        `✅ Benchmark complete: ${result.detected_count}/${result.variant_count} variants detected (${result.detection_rate.toFixed(2)}%). Weakest case: ${weakVariant?.description ?? "N/A"}.`,
       );
 
       const refreshedSummary = await fetchMetricsSummary();
@@ -323,9 +384,9 @@ export default function IngestPage() {
           ? benchmarkError.message
           : "Benchmark failed. Verify backend and try again.",
       );
-      setVariantProgress(null);
+      // Mark all cards as error
+      setWorkflowCards(prev => prev.map(card => ({ ...card, status: 'error', error: 'Processing failed' })));
     } finally {
-      setJobStage(null);
       setBenchmarkLoading(false);
     }
   };
@@ -394,9 +455,15 @@ export default function IngestPage() {
                   <input
                     type="date"
                     className="field-shell w-full"
+                    placeholder="Auto-detected from filename"
                     value={broadcastDate}
                     onChange={(event) => setBroadcastDate(event.target.value)}
                   />
+                  {broadcastDate && (
+                    <div className="mt-1 text-xs text-cyan">
+                      ✅ Auto-detected from filename
+                    </div>
+                  )}
                 </label>
 
                 <motion.button
@@ -440,12 +507,7 @@ export default function IngestPage() {
                     {message}
                   </motion.div>
                 ) : null}
-                {jobStage ? (
-                  <div className="rounded-2xl border border-cyan/20 bg-cyan/5 px-5 py-4 text-xs font-bold uppercase tracking-widest text-cyan leading-relaxed">
-                    Background Stage: {jobStage.replace(/_/g, " ")}
-                  </div>
-                ) : null}
-                {variantProgress ? (
+                                {workflowCards.length > 0 && (
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -453,45 +515,99 @@ export default function IngestPage() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="font-display text-sm font-bold uppercase tracking-[0.2em] text-neon">
-                        {variantProgress.stage === 'generating' ? '⚙️ Generating Variants' : 
-                         variantProgress.stage === 'analyzing' ? '🔬 Analyzing Variants' : 
-                         '✅ Benchmark Complete'}
+                        🔄 Variant Processing Pipeline
                       </div>
                       <div className="font-mono text-xs text-slate-400">
-                        {variantProgress.current}/{variantProgress.total}
+                        {workflowCards.filter(c => c.status === 'completed' || c.status === 'detected').length}/{workflowCards.length}
                       </div>
                     </div>
                     
-                    <div className="h-2 overflow-hidden rounded-full bg-slate-900/50">
-                      <motion.div
-                        className="h-full rounded-full bg-gradient-to-r from-neon/40 via-neon to-neon shadow-[0_0_15px_rgba(212,255,0,0.3)]"
-                        animate={{ width: `${(variantProgress.current / variantProgress.total) * 100}%` }}
-                        transition={{ type: "spring", bounce: 0, duration: 0.5 }}
-                      />
-                    </div>
-                    
-                    {variantProgress.currentVariant && (
-                      <div className="text-xs font-medium text-slate-300 leading-relaxed">
-                        <span className="text-cyan font-bold">{variantProgress.currentVariant}</span>: {variantProgress.currentDescription}
-                      </div>
-                    )}
-                    
-                    {variantProgress.results.length > 0 && (
-                      <div className="mt-4 max-h-48 overflow-y-auto space-y-2 border-t border-white/5 pt-4">
-                        {variantProgress.results.slice(-5).reverse().map((result, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-[10px] font-medium">
-                            <span className={result.isDetected ? 'text-neon' : 'text-slate-500'}>
-                              {result.isDetected ? '🔴' : '✓'} {result.description}
-                            </span>
-                            <span className="font-mono text-cyan">
-                              {result.combinedConfidence.toFixed(1)}%
-                            </span>
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      {workflowCards.map((card, index) => (
+                        <motion.div
+                          key={card.id}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: index * 0.1 }}
+                          className={`
+                            rounded-xl border p-4 space-y-3 transition-all duration-300
+                            ${card.status === 'pending' ? 'border-slate-700 bg-slate-900/30' : ''}
+                            ${card.status === 'generating' ? 'border-cyan/30 bg-cyan/5 shadow-[0_0_20px_rgba(6,182,212,0.1)]' : ''}
+                            ${card.status === 'analyzing' ? 'border-purple/30 bg-purple/5 shadow-[0_0_20px_rgba(168,85,247,0.1)]' : ''}
+                            ${card.status === 'completed' ? 'border-green/30 bg-green/5' : ''}
+                            ${card.status === 'detected' ? 'border-rose/30 bg-rose/5 shadow-[0_0_20px_rgba(244,63,94,0.1)]' : ''}
+                            ${card.status === 'error' ? 'border-rose/30 bg-rose/5' : ''}
+                          `}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className={`
+                                w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold
+                                ${card.status === 'pending' ? 'bg-slate-800 text-slate-500' : ''}
+                                ${card.status === 'generating' ? 'bg-cyan/20 text-cyan animate-pulse' : ''}
+                                ${card.status === 'analyzing' ? 'bg-purple/20 text-purple animate-pulse' : ''}
+                                ${card.status === 'completed' ? 'bg-green/20 text-green' : ''}
+                                ${card.status === 'detected' ? 'bg-rose/20 text-rose' : ''}
+                                ${card.status === 'error' ? 'bg-rose/20 text-rose' : ''}
+                              `}>
+                                {card.status === 'pending' ? '⏸' : ''}
+                                {card.status === 'generating' ? '⚙️' : ''}
+                                {card.status === 'analyzing' ? '🔬' : ''}
+                                {card.status === 'completed' ? '✅' : ''}
+                                {card.status === 'detected' ? '🔴' : ''}
+                                {card.status === 'error' ? '❌' : ''}
+                              </div>
+                              <div>
+                                <div className="font-mono text-xs text-slate-400">{card.name}</div>
+                                <div className="text-sm font-medium text-slate-200">{card.description}</div>
+                              </div>
+                            </div>
+                            
+                            {card.status !== 'pending' && (
+                              <div className="text-xs text-slate-400">
+                                {card.progress}%
+                              </div>
+                            )}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                          
+                          {(card.status === 'generating' || card.status === 'analyzing') && (
+                            <div className="h-1 overflow-hidden rounded-full bg-slate-800">
+                              <motion.div
+                                className={`
+                                  h-full rounded-full
+                                  ${card.status === 'generating' ? 'bg-cyan' : 'bg-purple'}
+                                `}
+                                animate={{ width: `${card.progress}%` }}
+                                transition={{ duration: 0.5 }}
+                              />
+                            </div>
+                          )}
+                          
+                          {(card.status === 'completed' || card.status === 'detected') && card.combinedConfidence !== undefined && (
+                            <div className="flex items-center justify-between text-xs">
+                              <div className="flex gap-4">
+                                <span className="text-slate-400">Video: <span className="text-cyan font-mono">{card.videoConfidence?.toFixed(1)}%</span></span>
+                                <span className="text-slate-400">Audio: <span className="text-purple font-mono">{card.audioConfidence?.toFixed(1)}%</span></span>
+                              </div>
+                              <div className={`
+                                font-mono font-bold
+                                ${card.status === 'detected' ? 'text-rose' : 'text-green'}
+                              `}>
+                                {card.combinedConfidence.toFixed(1)}%
+                              </div>
+                            </div>
+                          )}
+                          
+                          {card.status === 'error' && (
+                            <div className="text-xs text-rose">
+                              {card.error || 'Processing failed'}
+                            </div>
+                          )}
+                        </motion.div>
+                      ))}
+                    </div>
                   </motion.div>
-                ) : null}
+                )}
                 {error ? (
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
