@@ -467,30 +467,45 @@ export default function IngestPage() {
                   <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Content Title</span>
                   <input
                     className="field-shell w-full"
-                    placeholder="Auto-detected from filename"
+                    placeholder={file ? "Auto-filled from filename" : "Upload a video to auto-detect"}
                     value={contentTitle}
                     onChange={(event) => setContentTitle(event.target.value)}
                   />
+                  {contentTitle && file && (
+                    <div className="mt-1 text-xs text-neon flex items-center gap-1">
+                      <span>✓</span> Auto-detected
+                    </div>
+                  )}
                 </label>
 
                 <label className="block">
                   <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">League Name</span>
                   <input
                     className="field-shell w-full"
-                    placeholder="e.g. EURO_PREMIER_CHAMPIONSHIP"
+                    placeholder={file ? "Auto-filled from filename" : "e.g. FORMULA_1, PREMIER_LEAGUE, CHAMPIONS_LEAGUE"}
                     value={leagueName}
                     onChange={(event) => setLeagueName(event.target.value)}
                   />
+                  {leagueName && file && (
+                    <div className="mt-1 text-xs text-neon flex items-center gap-1">
+                      <span>✓</span> Auto-detected
+                    </div>
+                  )}
                 </label>
 
                 <label className="block">
                   <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Match ID</span>
                   <input
                     className="field-shell w-full"
-                    placeholder="e.g. UUID_88392_B"
+                    placeholder={file ? "Auto-generated from filename" : "e.g. MATCH_2024_FINAL_001"}
                     value={matchId}
                     onChange={(event) => setMatchId(event.target.value)}
                   />
+                  {matchId && file && (
+                    <div className="mt-1 text-xs text-neon flex items-center gap-1">
+                      <span>✓</span> Auto-generated
+                    </div>
+                  )}
                 </label>
 
                 <label className="block">
@@ -498,15 +513,18 @@ export default function IngestPage() {
                   <input
                     type="date"
                     className="field-shell w-full"
-                    placeholder="Auto-detected from filename"
                     value={broadcastDate}
                     onChange={(event) => setBroadcastDate(event.target.value)}
                   />
-                  {broadcastDate && (
-                    <div className="mt-1 text-xs text-cyan">
-                      ✅ Auto-detected from filename
+                  {broadcastDate && file ? (
+                    <div className="mt-1 text-xs text-neon flex items-center gap-1">
+                      <span>✓</span> Auto-detected from filename
                     </div>
-                  )}
+                  ) : !file ? (
+                    <div className="mt-1 text-xs text-slate-500">
+                      Upload a video to auto-detect date
+                    </div>
+                  ) : null}
                 </label>
 
                 <motion.button

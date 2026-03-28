@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import { TIMEOUTS } from "./constants/thresholds";
 import AppLayout from "./layouts/AppLayout";
 import DetectionPage from "./pages/DetectionPage";
 import EvidencePage from "./pages/EvidencePage";
@@ -77,7 +78,7 @@ export default function App() {
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       setShowSplash(false);
-    }, 2200);
+    }, TIMEOUTS.SPLASH_SCREEN);
 
     return () => window.clearTimeout(timeout);
   }, []);

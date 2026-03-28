@@ -3,6 +3,7 @@ import { fetchDetections, fetchMetricsSummary, getDmcaDownloadUrl, submitCandida
 import type { DetectionApiItem, MetricsSummaryApi } from "../types";
 import usePersistedState from "../hooks/usePersistedState";
 import { extractPlatform } from "../utils/platform";
+import { CONFIDENCE_THRESHOLDS, POLLING_INTERVALS, DISPLAY_LIMITS } from "../constants/thresholds";
 
 export default function LegalPage() {
   const [detections, setDetections] = usePersistedState<DetectionApiItem[]>("sentinel.legal.detections", []);
@@ -30,7 +31,7 @@ export default function LegalPage() {
       if (mounted) {
         loadPageData();
       }
-    }, 5000);
+    }, POLLING_INTERVALS.METRICS);
 
     return () => {
       mounted = false;
@@ -42,14 +43,14 @@ export default function LegalPage() {
 
   const legalNotices = useMemo(
     () =>
-      detections.slice(0, 20).map((detection) => {
+      detections.slice(0, DISPLAY_LIMITS.LEGAL_NOTICES).map((detection) => {
         const confidence = detection.confidence_score ?? 0;
         const status = detection.dmca_generated
           ? "Notice Generated"
-          : confidence >= 85
+          : confidence >= CONFIDENCE_THRESHOLDS.HIGH
             ? "Action Required"
             : "Under Review";
-        const priority = confidence >= 90 ? "Critical" : confidence >= 80 ? "High" : "Medium";
+        const priority = confidence >= CONFIDENCE_THRESHOLDS.CRITICAL ? "Critical" : confidence >= CONFIDENCE_THRESHOLDS.AUTO_ACTION ? "High" : "Medium";
         return {
           id: detection.id,
           caseId: `CASE_${String(detection.id).padStart(4, "0")}`,
@@ -115,7 +116,7 @@ export default function LegalPage() {
 
   const handleBulkAction = useCallback(() => {
     const prioritized = legalNotices.filter((item) => item.priority === "Critical" || item.priority === "High");
-    const selected = (prioritized.length > 0 ? prioritized : legalNotices).slice(0, 5);
+    const selected = (prioritized.length > 0 ? prioritized : legalNotices).slice(0, DISPLAY_LIMITS.BULK_ACTION_MAX);
     selected.forEach((item) => {
       window.open(getDmcaDownloadUrl(item.id), "_blank", "noopener,noreferrer");
     });

@@ -15,6 +15,7 @@ try:
     from engines.dual_engine import DualModeEngine
 except Exception as exc:
     raise unittest.SkipTest(f"Optional integration dependencies unavailable: {exc}")
+from generators.dmca_generator import DMCAGenerator
 from datetime import datetime
 
 
@@ -279,6 +280,58 @@ def generate_report(original_meta, detection_results):
         print(f"  Review configuration and thresholds")
     
     print(f"\n" + "=" * 80)
+
+
+def generate_dmca_notices(detection_results):
+    """Generate DMCA takedown notices for detected piracy."""
+    if not detection_results:
+        print(f"\n⚠ No detections, skipping DMCA generation")
+        return []
+    
+    print(f"\n" + "=" * 80)
+    print("📄 GENERATING DMCA TAKEDOWN NOTICES")
+    print("=" * 80)
+    
+    notices_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "notices")
+    dmca_gen = DMCAGenerator(output_dir=notices_dir)
+    
+    generated_notices = []
+    
+    for i, detection in enumerate(detection_results, 1):
+        confidence = detection.get('combined_confidence', detection.get('basic_confidence', 0.0))
+        
+        # Only generate DMCA for high-confidence detections
+        if confidence >= 80.0:
+            notice_id = f"DET-{i:04d}"
+            
+            content_info = {
+                "title": "Protected Media Content",
+                "league": "Intellectual Property Owner"
+            }
+            
+            infringer_info = {
+                "url": f"https://pirate-site.com/{detection['description'].replace(' ', '_')}",
+                "confidence": confidence,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            try:
+                pdf_path = dmca_gen.create_notice(notice_id, content_info, infringer_info)
+                generated_notices.append({
+                    "detection_id": notice_id,
+                    "variant": detection['description'],
+                    "confidence": confidence,
+                    "pdf_path": pdf_path
+                })
+                print(f"  ✅ [{notice_id}] {detection['description']}: {confidence:.1f}% confidence")
+                print(f"     → {pdf_path}")
+            except Exception as e:
+                print(f"  ⚠ [{notice_id}] Failed to generate DMCA: {e}")
+    
+    print(f"\n✅ Generated {len(generated_notices)} DMCA notice(s)")
+    print(f"   Notices saved to: {notices_dir}")
+    
+    return generated_notices
 
 
 def get_available_videos(video_dir: str):
@@ -978,8 +1031,18 @@ def main():
         if detection_results:
             test_ai_integration(detection_results)
         
+        # Step 4: Generate DMCA notices for detected piracy
+        dmca_notices = generate_dmca_notices(detection_results)
+        
         # Generate final report
         generate_report(original_meta, detection_results)
+        
+        # Summary with DMCA count
+        if dmca_notices:
+            print(f"\n🚨 ENFORCEMENT SUMMARY:")
+            print(f"   - Detections: {len(detection_results)}")
+            print(f"   - High-confidence (≥80%): {len(dmca_notices)}")
+            print(f"   - DMCA notices generated: {len(dmca_notices)}")
         
         return 0
         

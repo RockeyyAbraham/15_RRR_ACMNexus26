@@ -62,7 +62,7 @@ def _open_video_writer(path: Path, fps: float, width: int, height: int) -> cv2.V
     return cv2.VideoWriter(str(path), fourcc, fps if fps > 0 else 30.0, (width, height))
 
 
-def _generate_240p_variant(input_path: Path, output_path: Path, max_frames: int = 300):
+def _generate_240p_variant(input_path: Path, output_path: Path, max_frames: int = 150):
     cap = cv2.VideoCapture(str(input_path))
     fps = cap.get(cv2.CAP_PROP_FPS)
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -86,7 +86,7 @@ def _generate_240p_variant(input_path: Path, output_path: Path, max_frames: int 
     writer.release()
 
 
-def _generate_colorshift_variant(input_path: Path, output_path: Path, max_frames: int = 300):
+def _generate_colorshift_variant(input_path: Path, output_path: Path, max_frames: int = 150):
     cap = cv2.VideoCapture(str(input_path))
     fps = cap.get(cv2.CAP_PROP_FPS)
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -108,7 +108,7 @@ def _generate_colorshift_variant(input_path: Path, output_path: Path, max_frames
     writer.release()
 
 
-def _generate_cropped_variant(input_path: Path, output_path: Path, max_frames: int = 300):
+def _generate_cropped_variant(input_path: Path, output_path: Path, max_frames: int = 150):
     cap = cv2.VideoCapture(str(input_path))
     fps = cap.get(cv2.CAP_PROP_FPS)
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -133,7 +133,7 @@ def _generate_cropped_variant(input_path: Path, output_path: Path, max_frames: i
     writer.release()
 
 
-def _generate_extreme_variant(input_path: Path, output_path: Path, max_frames: int = 300):
+def _generate_extreme_variant(input_path: Path, output_path: Path, max_frames: int = 150):
     cap = cv2.VideoCapture(str(input_path))
     fps = cap.get(cv2.CAP_PROP_FPS)
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -165,7 +165,7 @@ def _generate_extreme_variant(input_path: Path, output_path: Path, max_frames: i
     writer.release()
 
 
-def _generate_letterbox_variant(input_path: Path, output_path: Path, max_frames: int = 300):
+def _generate_letterbox_variant(input_path: Path, output_path: Path, max_frames: int = 150):
     cap = cv2.VideoCapture(str(input_path))
     fps = cap.get(cv2.CAP_PROP_FPS)
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -193,7 +193,7 @@ def _generate_letterbox_variant(input_path: Path, output_path: Path, max_frames:
     writer.release()
 
 
-def _generate_mirrored_variant(input_path: Path, output_path: Path, max_frames: int = 300):
+def _generate_mirrored_variant(input_path: Path, output_path: Path, max_frames: int = 150):
     cap = cv2.VideoCapture(str(input_path))
     fps = cap.get(cv2.CAP_PROP_FPS)
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -212,7 +212,7 @@ def _generate_mirrored_variant(input_path: Path, output_path: Path, max_frames: 
     writer.release()
 
 
-def _generate_rotate_variant(input_path: Path, output_path: Path, max_frames: int = 300):
+def _generate_rotate_variant(input_path: Path, output_path: Path, max_frames: int = 150):
     cap = cv2.VideoCapture(str(input_path))
     fps = cap.get(cv2.CAP_PROP_FPS)
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -231,7 +231,7 @@ def _generate_rotate_variant(input_path: Path, output_path: Path, max_frames: in
     writer.release()
 
 
-def _generate_stretch_variant(input_path: Path, output_path: Path, max_frames: int = 300):
+def _generate_stretch_variant(input_path: Path, output_path: Path, max_frames: int = 150):
     cap = cv2.VideoCapture(str(input_path))
     fps = cap.get(cv2.CAP_PROP_FPS)
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -251,7 +251,7 @@ def _generate_stretch_variant(input_path: Path, output_path: Path, max_frames: i
     writer.release()
 
 
-def _generate_watermark_variant(input_path: Path, output_path: Path, max_frames: int = 300):
+def _generate_watermark_variant(input_path: Path, output_path: Path, max_frames: int = 150):
     cap = cv2.VideoCapture(str(input_path))
     fps = cap.get(cv2.CAP_PROP_FPS)
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))

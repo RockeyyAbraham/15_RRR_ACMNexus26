@@ -715,11 +715,22 @@ def process_piracy_benchmark(video_path: Path, title: str, league: str, progress
     print(f"PIRACY BENCHMARK: {title}")
     print(f"{'=' * 80}")
     
-    # Step 1: Process protected video (simplified)
+    # Step 1: Process protected video and save to database
     if progress_cb:
         progress_cb("processing_protected")
     
     print(f"Processing protected video: {video_path}")
+    
+    # Save protected content to database first
+    protected_result = process_protected_video(
+        video_path=video_path,
+        title=title,
+        league=league,
+        progress_cb=progress_cb,
+        cancel_cb=cancel_cb
+    )
+    content_id = protected_result['content_id']
+    print(f"Protected content saved with ID: {content_id}")
     
     # Step 2: Generate variants using the working code
     if progress_cb:
@@ -795,10 +806,12 @@ def process_piracy_benchmark(video_path: Path, title: str, league: str, progress
         try:
             dual_result = engine.detect_piracy(str(suspect_path), str(video_path), mode='dual')
             
+            combined_confidence = dual_result.get('combined_confidence', 0.0)
+            
             result_data = {
                 'filename': filename,
                 'description': description,
-                'combined_confidence': dual_result.get('combined_confidence', 0.0),
+                'combined_confidence': combined_confidence,
                 'video_confidence': dual_result.get('video_confidence', 0.0),
                 'audio_confidence': dual_result.get('audio_confidence', 0.0),
                 'is_detected': dual_result.get('is_match', False),
@@ -808,6 +821,22 @@ def process_piracy_benchmark(video_path: Path, title: str, league: str, progress
             }
             
             results.append(result_data)
+            
+            # Save detection to database if confidence is high enough
+            if combined_confidence >= MANUAL_REVIEW_THRESHOLD:
+                conn = sqlite3.connect(str(DB_PATH))
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO detections (protected_content_id, stream_url, confidence_score)
+                    VALUES (?, ?, ?)
+                    """,
+                    (content_id, f"benchmark://{filename}", combined_confidence),
+                )
+                detection_id = cursor.lastrowid
+                conn.commit()
+                conn.close()
+                print(f"  💾 Saved detection #{detection_id} to database")
             
             if result_data['is_detected']:
                 detected_count += 1
@@ -928,6 +957,10 @@ def upload_suspect():
 @app.route("/analysis/piracy-benchmark/async", methods=["POST"])
 def run_piracy_benchmark_async():
     """Main-project API: process protected video and evaluate 17 generated piracy variants."""
+    logger.info("[API] ========== PIRACY BENCHMARK ENDPOINT CALLED ==========")
+    logger.info(f"[API] Request files: {list(request.files.keys())}")
+    logger.info(f"[API] Request form: {dict(request.form)}")
+    
     if "video" not in request.files:
         return jsonify({"error": "No video file provided"}), 400
 
@@ -950,11 +983,16 @@ def run_piracy_benchmark_async():
             "video_path": str(video_path),
         },
     )
+    logger.info(f"[API] Created piracy benchmark job {job_id} for {title}")
 
     def worker():
+        logger.info(f"[WORKER] Starting piracy benchmark job {job_id}")
         try:
             progress_callback = _job_progress_callback(job_id)
+            logger.info(f"[WORKER] Updating job {job_id} to running status")
             update_job(job_id, status="running", stage="starting")
+            
+            logger.info(f"[WORKER] Processing benchmark for {title}")
             result = process_piracy_benchmark(
                 video_path=video_path,
                 title=title,
@@ -962,6 +1000,8 @@ def run_piracy_benchmark_async():
                 progress_cb=progress_callback,
                 cancel_cb=lambda: _is_job_cancelled(job_id),
             )
+            
+            logger.info(f"[WORKER] Benchmark complete, updating job {job_id}")
             update_job(
                 job_id,
                 status="completed",
@@ -969,17 +1009,21 @@ def run_piracy_benchmark_async():
                 result=result,
                 progress_data={"progress_percent": 100},
             )
+            logger.info(f"[WORKER] Job {job_id} completed successfully")
         except Exception as e:
-            logger.error("Piracy benchmark job failed: %s", e, exc_info=True)
+            logger.error(f"[WORKER] Piracy benchmark job {job_id} failed: {e}", exc_info=True)
             if _is_job_cancelled(job_id):
                 update_job(job_id, status="cancelled", stage="cancelled", error="Job cancelled")
             else:
                 update_job(job_id, status="failed", stage="failed", error=str(e))
         finally:
+            logger.info(f"[WORKER] Cleaning up video file for job {job_id}")
             if os.path.exists(video_path):
                 os.remove(video_path)
 
+    logger.info(f"[API] Starting worker thread for job {job_id}")
     threading.Thread(target=worker, daemon=True).start()
+    logger.info(f"[API] Worker thread started for job {job_id}")
 
     return jsonify({"job_id": job_id, "status": "queued"}), 202
 
@@ -1206,6 +1250,7 @@ def monitor_status():
 
 @app.route("/metrics/summary", methods=["GET"])
 def get_metrics_summary():
+    conn = None
     try:
         conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
@@ -1265,6 +1310,12 @@ def get_metrics_summary():
         ), 200
 
     except Exception as e:
+        logger.error(f"Metrics summary failed: {e}", exc_info=True)
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
         return jsonify({"error": str(e)}), 500
 
 
@@ -1355,46 +1406,71 @@ def generate_dmca(detection_id):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/test", methods=["GET"])
+def test_endpoint():
+    """Simple test endpoint to verify Flask is working."""
+    return jsonify({"status": "ok", "message": "Test endpoint works"}), 200
+
+
 @app.route("/health", methods=["GET"])
 def health_check():
-    engines_status = []
     try:
-        get_media_engines()
-        engines_status.extend(["hashing", "matching", "audio"])
-    except Exception:
-        engines_status.append("media_unavailable")
+        engines_status = []
+        try:
+            get_media_engines()
+            engines_status.extend(["hashing", "matching", "audio"])
+        except Exception as e:
+            logger.warning(f"Media engines unavailable: {e}")
+            engines_status.append("media_unavailable")
 
-    try:
-        get_dmca_generator()
-        engines_status.append("generator")
-    except Exception:
-        engines_status.append("generator_unavailable")
+        try:
+            get_dmca_generator()
+            engines_status.append("generator")
+        except Exception as e:
+            logger.warning(f"DMCA generator unavailable: {e}")
+            engines_status.append("generator_unavailable")
 
-    if get_ai_engine() is not None:
-        engines_status.append("ai")
-    else:
-        engines_status.append("ai_unavailable")
+        try:
+            if get_ai_engine() is not None:
+                engines_status.append("ai")
+            else:
+                engines_status.append("ai_unavailable")
+        except Exception as e:
+            logger.warning(f"AI engine check failed: {e}")
+            engines_status.append("ai_unavailable")
 
-    if redis_manager.is_available():
-        engines_status.append("redis")
-    else:
-        engines_status.append("redis_unavailable")
+        try:
+            if redis_manager.is_available():
+                engines_status.append("redis")
+            else:
+                engines_status.append("redis_unavailable")
+        except Exception as e:
+            logger.warning(f"Redis check failed: {e}")
+            engines_status.append("redis_unavailable")
 
-    job_stats = get_job_stats()
+        job_stats = get_job_stats()
 
-    return jsonify(
-        {
-            "status": "online",
-            "engines": engines_status,
-            "async": {
-                "max_workers": 0,
-                "max_queue_size": 0,
-                "tracked_jobs": job_stats["tracked_jobs"],
-                "active_jobs": job_stats["active_jobs"],
-            },
+        return jsonify(
+            {
+                "status": "online",
+                "engines": engines_status,
+                "async": {
+                    "max_workers": 0,
+                    "max_queue_size": 0,
+                    "tracked_jobs": job_stats["tracked_jobs"],
+                    "active_jobs": job_stats["active_jobs"],
+                },
+                "timestamp": datetime.now().isoformat(),
+            }
+        ), 200
+    except Exception as e:
+        logger.error(f"Health check failed: {e}", exc_info=True)
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "engines": [],
             "timestamp": datetime.now().isoformat(),
-        }
-    ), 200
+        }), 500
 
 
 @sock.route("/live")
