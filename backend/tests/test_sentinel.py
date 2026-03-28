@@ -71,12 +71,15 @@ def test_original_video():
         return None, None
 
 
-def test_pirated_videos(original_hashes):
+def test_pirated_videos(original_hashes=None):
     """Test detection of pirated versions."""
     print("\n" + "=" * 80)
     print("TEST 2: Detecting Pirated Versions")
     print("=" * 80)
     
+    if original_hashes is None:
+        original_hashes, _ = test_original_video()
+
     if not original_hashes:
         print("✗ Skipping (no original hashes)")
         return
@@ -177,7 +180,7 @@ def test_pirated_videos(original_hashes):
     return results
 
 
-def test_ai_integration(detection_results):
+def test_ai_integration(detection_results=None):
     """Test AI engine integration with detection results."""
     print("\n" + "=" * 80)
     print("TEST 3: AI Engine Integration")
@@ -190,6 +193,9 @@ def test_ai_integration(detection_results):
         print(f"\n✓ AI engine initialized")
         print(f"  Model: {ai.model}")
         
+        if detection_results is None:
+            detection_results = []
+
         # Generate summary for first detection
         if detection_results and len(detection_results) > 0:
             det = detection_results[0]
@@ -297,6 +303,11 @@ def select_video_interactive(videos):
         print(f"  {i}. {v[:60]}...")
     print("="*60)
     
+    # Under pytest capture/non-interactive shells, always select the first video.
+    if not sys.stdin or not sys.stdin.isatty():
+        print(f"  Defaulting to: {videos[0]}")
+        return videos[0]
+
     try:
         choice = input(f"\n  Select video (1-{len(videos)}): ")
         idx = int(choice) - 1

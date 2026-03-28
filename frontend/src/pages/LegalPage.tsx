@@ -1,22 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { fetchDetections, fetchMetricsSummary, getDmcaDownloadUrl, submitCandidate } from "../services/api";
 import type { DetectionApiItem, MetricsSummaryApi } from "../types";
-
-function extractPlatform(streamUrl: string) {
-  try {
-    return new URL(streamUrl.startsWith("http") ? streamUrl : `https://${streamUrl}`).hostname
-      .replace("www.", "")
-      .split(".")[0]
-      .toUpperCase();
-  } catch {
-    return "UNKNOWN";
-  }
-}
+import usePersistedState from "../hooks/usePersistedState";
+import { extractPlatform } from "../utils/platform";
 
 export default function LegalPage() {
-  const [detections, setDetections] = useState<DetectionApiItem[]>([]);
-  const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [detections, setDetections] = usePersistedState<DetectionApiItem[]>("sentinel.legal.detections", []);
+  const [summary, setSummary] = usePersistedState<MetricsSummaryApi | null>("sentinel.legal.summary", null);
+  const [actionMessage, setActionMessage] = usePersistedState<string | null>("sentinel.legal.actionMessage", null);
 
   const loadPageData = async () => {
     const [detectionItems, summaryData] = await Promise.all([
@@ -79,7 +70,7 @@ export default function LegalPage() {
     return `${ratio.toFixed(1)}%`;
   }, [summary]);
 
-  const handleNewCase = async () => {
+  const handleNewCase = useCallback(async () => {
     const rawUrl = window.prompt("Enter stream URL for new case:", "https://");
     if (!rawUrl) {
       return;
@@ -102,9 +93,9 @@ export default function LegalPage() {
     } catch (error) {
       setActionMessage(error instanceof Error ? error.message : "Failed to create case");
     }
-  };
+  }, [setActionMessage]);
 
-  const handleExportReport = () => {
+  const handleExportReport = useCallback(() => {
     const header = "Case ID,Platform,Status,Priority,Detection ID";
     const rows = legalNotices.map((notice) =>
       [notice.caseId, notice.platform, notice.status, notice.priority, String(notice.id)]
@@ -120,16 +111,16 @@ export default function LegalPage() {
     link.click();
     URL.revokeObjectURL(url);
     setActionMessage("Legal report exported");
-  };
+  }, [legalNotices, setActionMessage]);
 
-  const handleBulkAction = () => {
+  const handleBulkAction = useCallback(() => {
     const prioritized = legalNotices.filter((item) => item.priority === "Critical" || item.priority === "High");
     const selected = (prioritized.length > 0 ? prioritized : legalNotices).slice(0, 5);
     selected.forEach((item) => {
       window.open(getDmcaDownloadUrl(item.id), "_blank", "noopener,noreferrer");
     });
     setActionMessage(`Opened ${selected.length} DMCA notice tabs`);
-  };
+  }, [legalNotices, setActionMessage]);
 
   return (
     <div className="space-y-6">
@@ -210,10 +201,10 @@ export default function LegalPage() {
           </div>
 
           <div className="flex flex-wrap gap-4 pt-2">
-            <button type="button" className="subtle-button min-w-[140px]" onClick={handleNewCase}>
+            <button type="button" className="subtle-button min-w-[140px]" onClick={handleNewCase} aria-label="Create new legal case">
               New Case
             </button>
-            <button type="button" className="subtle-button min-w-[140px]" onClick={handleExportReport}>
+            <button type="button" className="subtle-button min-w-[140px]" onClick={handleExportReport} aria-label="Export legal report to CSV">
               Export Report
             </button>
             <button
@@ -221,6 +212,7 @@ export default function LegalPage() {
               className="subtle-button min-w-[140px]"
               onClick={handleBulkAction}
               disabled={legalNotices.length === 0}
+              aria-label="Process bulk DMCA actions"
             >
               Bulk Action
             </button>

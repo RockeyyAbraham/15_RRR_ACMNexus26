@@ -104,8 +104,137 @@ TEMP_DIR.mkdir(parents=True, exist_ok=True)
 monitor_sessions = {}
 monitor_lock = threading.Lock()
 
+jobs = {}
+jobs_lock = threading.Lock()
+
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 telemetry_logger = logging.getLogger("sentinel.telemetry")
+
+
+def create_job(job_type: str, payload: dict | None = None):
+    """Create an in-memory async job record and return its id."""
+    job_id = str(uuid.uuid4())
+    now = datetime.now().isoformat()
+    job = {
+        "job_id": job_id,
+        "job_type": job_type,
+        "status": "queued",
+        "stage": "queued",
+        "cancel_requested": False,
+        "payload": payload or {},
+        "result": None,
+        "error": None,
+        "progress_data": {
+            "progress_percent": 0,
+            "variant_index": 0,
+            "variant_total": 0,
+            "variant_name": None,
+        },
+        "created_at": now,
+        "updated_at": now,
+        "completed_at": None,
+    }
+    with jobs_lock:
+        jobs[job_id] = job
+    return job_id
+
+
+def get_job(job_id: str):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        return dict(job) if job else None
+
+
+def update_job(job_id: str, **updates):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return None
+
+        progress_data = updates.pop("progress_data", None)
+        if progress_data is not None:
+            merged = dict(job.get("progress_data") or {})
+            merged.update(progress_data)
+            job["progress_data"] = merged
+
+        job.update(updates)
+        job["updated_at"] = datetime.now().isoformat()
+        if job.get("status") in {"completed", "failed", "cancelled"} and not job.get("completed_at"):
+            job["completed_at"] = datetime.now().isoformat()
+
+        return dict(job)
+
+
+def request_job_cancel(job_id: str):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return None
+
+        if job.get("status") not in {"completed", "failed", "cancelled"}:
+            job["cancel_requested"] = True
+            job["status"] = "cancelled"
+            job["stage"] = "cancelled"
+            progress = dict(job.get("progress_data") or {})
+            progress["progress_percent"] = progress.get("progress_percent", 0)
+            job["progress_data"] = progress
+            job["updated_at"] = datetime.now().isoformat()
+            job["completed_at"] = datetime.now().isoformat()
+
+        return dict(job)
+
+
+def get_active_job_count():
+    with jobs_lock:
+        return sum(1 for job in jobs.values() if job.get("status") in {"queued", "running"})
+
+
+def get_job_stats():
+    with jobs_lock:
+        tracked = len(jobs)
+        active = sum(1 for job in jobs.values() if job.get("status") in {"queued", "running"})
+    return {"tracked_jobs": tracked, "active_jobs": active}
+
+
+def _is_job_cancelled(job_id: str):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        return bool(job and job.get("cancel_requested"))
+
+
+def _calculate_progress_percent(stage: str, data: dict | None = None):
+    data = data or {}
+    if stage == "processing_protected":
+        return 10
+    if stage == "generating_variants":
+        return 20
+    if stage == "variants_complete":
+        return 25
+    if stage in {"variant_analyzing", "variant_analyzed"}:
+        total = max(int(data.get("variant_total", 0)), 1)
+        idx = int(data.get("variant_index", 0))
+        completed = idx if stage == "variant_analyzed" else max(idx - 1, 0)
+        return min(95, int(25 + (completed / total) * 70))
+    if stage == "completed":
+        return 100
+    return None
+
+
+def _job_progress_callback(job_id: str):
+    def callback(stage, data=None):
+        progress_percent = _calculate_progress_percent(stage, data)
+        progress_payload = dict(data or {})
+        if progress_percent is not None:
+            progress_payload["progress_percent"] = progress_percent
+
+        update_job(
+            job_id,
+            status="running",
+            stage=stage,
+            progress_data=progress_payload,
+        )
+
+    return callback
 
 
 def get_ai_engine():
@@ -811,35 +940,64 @@ def run_piracy_benchmark_async():
 
     title = request.form.get("title", Path(video_file.filename).stem)
     league = request.form.get("league", "BENCHMARK")
-    
-    print(f"\n{'=' * 80}")
-    print(f"STARTING PIRACY BENCHMARK: {title}")
-    print(f"{'=' * 80}")
-    
-    try:
-        # Run benchmark synchronously with direct progress updates
-        def progress_callback(stage, data=None):
-            print(f"[PROGRESS] {stage}: {data}")
-        
-        result = process_piracy_benchmark(
-            video_path=video_path,
-            title=title,
-            league=league,
-            progress_cb=progress_callback,
-            cancel_cb=None
-        )
-        
-        print(f"\n{'=' * 80}")
-        print(f"PIRACY BENCHMARK COMPLETED")
-        print(f"{'=' * 80}")
-        
-        return jsonify(result), 200
-        
-    except Exception as e:
-        print(f"ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+
+    job_id = create_job(
+        "piracy_benchmark",
+        {
+            "title": title,
+            "league": league,
+            "video_filename": video_file.filename,
+            "video_path": str(video_path),
+        },
+    )
+
+    def worker():
+        try:
+            progress_callback = _job_progress_callback(job_id)
+            update_job(job_id, status="running", stage="starting")
+            result = process_piracy_benchmark(
+                video_path=video_path,
+                title=title,
+                league=league,
+                progress_cb=progress_callback,
+                cancel_cb=lambda: _is_job_cancelled(job_id),
+            )
+            update_job(
+                job_id,
+                status="completed",
+                stage="completed",
+                result=result,
+                progress_data={"progress_percent": 100},
+            )
+        except Exception as e:
+            logger.error("Piracy benchmark job failed: %s", e, exc_info=True)
+            if _is_job_cancelled(job_id):
+                update_job(job_id, status="cancelled", stage="cancelled", error="Job cancelled")
+            else:
+                update_job(job_id, status="failed", stage="failed", error=str(e))
+        finally:
+            if os.path.exists(video_path):
+                os.remove(video_path)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    return jsonify({"job_id": job_id, "status": "queued"}), 202
+
+
+@app.route("/jobs/<job_id>", methods=["GET"])
+def get_job_status(job_id):
+    job = get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(job), 200
+
+
+@app.route("/jobs/<job_id>/cancel", methods=["POST"])
+def cancel_job(job_id):
+    job = request_job_cancel(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(job), 200
 
 
 
@@ -1082,6 +1240,8 @@ def get_metrics_summary():
 
         conn.close()
 
+        job_stats = get_job_stats()
+
         return jsonify(
             {
                 "protected_content_count": protected_count,
@@ -1096,10 +1256,10 @@ def get_metrics_summary():
                     "manual_review": MANUAL_REVIEW_THRESHOLD,
                 },
                 "async": {
-                    "max_workers": MAX_ASYNC_WORKERS,
-                    "max_queue_size": MAX_QUEUE_SIZE,
-                    "tracked_jobs": len(jobs),
-                    "active_jobs": get_active_job_count(),
+                    "max_workers": 0,
+                    "max_queue_size": 0,
+                    "tracked_jobs": job_stats["tracked_jobs"],
+                    "active_jobs": job_stats["active_jobs"],
                 },
             }
         ), 200
@@ -1220,15 +1380,17 @@ def health_check():
     else:
         engines_status.append("redis_unavailable")
 
+    job_stats = get_job_stats()
+
     return jsonify(
         {
             "status": "online",
             "engines": engines_status,
             "async": {
-                "max_workers": MAX_ASYNC_WORKERS,
-                "max_queue_size": MAX_QUEUE_SIZE,
-                "tracked_jobs": len(jobs),
-                "active_jobs": get_active_job_count(),
+                "max_workers": 0,
+                "max_queue_size": 0,
+                "tracked_jobs": job_stats["tracked_jobs"],
+                "active_jobs": job_stats["active_jobs"],
             },
             "timestamp": datetime.now().isoformat(),
         }

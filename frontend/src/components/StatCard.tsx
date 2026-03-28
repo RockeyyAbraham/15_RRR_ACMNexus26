@@ -8,9 +8,9 @@ type StatCardProps = {
 export default function StatCard({ label, value, hint, accent = "default" }: StatCardProps) {
   const accentStyles = {
     default: "text-white",
-    neon: "text-neon shadow-[0_0_20px_rgba(212,255,0,0.15)]",
-    cyan: "text-cyan shadow-[0_0_20px_rgba(0,234,255,0.1)]",
-    danger: "text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.1)]",
+    neon: "text-neon drop-shadow-[0_0_15px_rgba(212,255,0,0.3)]",
+    cyan: "text-cyan drop-shadow-[0_0_15px_rgba(0,234,255,0.2)]",
+    danger: "text-rose-400 drop-shadow-[0_0_15px_rgba(244,63,94,0.2)]",
   };
 
   return (

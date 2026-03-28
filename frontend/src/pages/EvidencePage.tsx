@@ -1,22 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { fetchDetections, fetchMetricsSummary, getDmcaDownloadUrl } from "../services/api";
 import StatCard from "../components/StatCard";
 import type { DetectionApiItem, MetricsSummaryApi } from "../types";
-
-function extractPlatform(streamUrl: string) {
-  try {
-    return new URL(streamUrl.startsWith("http") ? streamUrl : `https://${streamUrl}`).hostname
-      .replace("www.", "")
-      .split(".")[0]
-      .toUpperCase();
-  } catch {
-    return "UNKNOWN";
-  }
-}
+import usePersistedState from "../hooks/usePersistedState";
+import { extractPlatform } from "../utils/platform";
+import { POLLING_INTERVALS } from "../constants/thresholds";
 
 export default function EvidencePage() {
-  const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
-  const [detections, setDetections] = useState<DetectionApiItem[]>([]);
+  const [summary, setSummary] = usePersistedState<MetricsSummaryApi | null>("sentinel.evidence.summary", null);
+  const [detections, setDetections] = usePersistedState<DetectionApiItem[]>("sentinel.evidence.detections", []);
 
   useEffect(() => {
     let mounted = true;
@@ -42,7 +34,7 @@ export default function EvidencePage() {
       if (mounted) {
         loadData();
       }
-    }, 5000);
+    }, POLLING_INTERVALS.METRICS);
 
     return () => {
       mounted = false;
@@ -54,12 +46,12 @@ export default function EvidencePage() {
 
   const topDetection = detections[0] ?? null;
 
-  const handleApproveForDmca = () => {
+  const handleApproveForDmca = useCallback(() => {
     if (!topDetection) {
       return;
     }
     window.open(getDmcaDownloadUrl(topDetection.id), "_blank", "noopener,noreferrer");
-  };
+  }, [topDetection]);
 
   const evidenceCards = useMemo(
     () => [
@@ -151,6 +143,7 @@ export default function EvidencePage() {
               className="cyber-button w-full mt-2"
               onClick={handleApproveForDmca}
               disabled={!topDetection}
+              aria-label="Approve detection for DMCA notice generation"
             >
               Approve For DMCA
             </button>

@@ -1,0 +1,30 @@
+export const CONFIDENCE_THRESHOLDS = {
+  CRITICAL: 90,
+  HIGH: 85,
+  AUTO_ACTION: 80,
+  MANUAL_REVIEW: 70,
+} as const;
+
+export const POLLING_INTERVALS = {
+  METRICS: 5000,
+  BENCHMARK_STATUS: 1500,
+} as const;
+
+export const TIMEOUTS = {
+  BENCHMARK_MAX_WAIT: 12 * 60 * 1000,
+  SPLASH_SCREEN: 2200,
+} as const;
+
+export const PROGRESS_INCREMENTS = {
+  VIDEO_STEP: 11,
+  AUDIO_STEP: 9,
+  VIDEO_MAX: 94,
+  AUDIO_MAX: 88,
+  INTERVAL_MS: 220,
+} as const;
+
+export const DISPLAY_LIMITS = {
+  RECENT_DETECTIONS: 7,
+  LEGAL_NOTICES: 20,
+  BULK_ACTION_MAX: 5,
+} as const;

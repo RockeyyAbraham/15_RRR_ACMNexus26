@@ -83,8 +83,8 @@ export type FingerprintResponse = {
 export type PiracyBenchmarkVariant = {
   filename: string;
   description: string;
-  issue_type: string;
-  generation_status: string;
+  issue_type?: string;
+  generation_status?: string;
   generation_note?: string | null;
   video_confidence: number;
   audio_confidence: number;
@@ -98,12 +98,43 @@ export type PiracyBenchmarkVariant = {
 
 export type PiracyBenchmarkResponse = {
   message: string;
-  protected: FingerprintResponse;
   output_dir: string;
   variant_count: number;
   detected_count: number;
   detection_rate: number;
   variants: PiracyBenchmarkVariant[];
+};
+
+export type BenchmarkJobStartResponse = {
+  job_id: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+};
+
+export type BenchmarkJobProgressData = {
+  progress_percent?: number;
+  variant_index?: number;
+  variant_total?: number;
+  variant_name?: string;
+  variant_description?: string;
+  video_confidence?: number;
+  audio_confidence?: number;
+  combined_confidence?: number;
+  is_detected?: boolean;
+};
+
+export type BenchmarkJobStatusResponse = {
+  job_id: string;
+  job_type: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  stage: string;
+  cancel_requested: boolean;
+  payload?: Record<string, unknown>;
+  progress_data?: BenchmarkJobProgressData;
+  result?: PiracyBenchmarkResponse | null;
+  error?: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
 };
 
 export type LivePayload = {

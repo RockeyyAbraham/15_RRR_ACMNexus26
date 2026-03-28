@@ -1,20 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ChartPanel from "../components/ChartPanel";
 import DetectionFeed from "../components/DetectionFeed";
 import StatCard from "../components/StatCard";
 import { fetchDetections, fetchHealth, fetchMetricsSummary, getLiveSocketUrl } from "../services/api";
 import type { DetectionApiItem, DetectionFeedItem, HealthApi, LivePayload, MetricsSummaryApi } from "../types";
-
-function extractPlatform(streamUrl: string) {
-  try {
-    return new URL(streamUrl.startsWith("http") ? streamUrl : `https://${streamUrl}`).hostname
-      .replace("www.", "")
-      .split(".")[0]
-      .toUpperCase();
-  } catch {
-    return "UNKNOWN";
-  }
-}
+import usePersistedState from "../hooks/usePersistedState";
+import { extractPlatform } from "../utils/platform";
+import { POLLING_INTERVALS, DISPLAY_LIMITS } from "../constants/thresholds";
 
 function formatDetection(item: DetectionApiItem): DetectionFeedItem {
   const timestamp = item.detected_at ? new Date(item.detected_at).toLocaleString() : "UNKNOWN";
@@ -31,10 +23,10 @@ function formatDetection(item: DetectionApiItem): DetectionFeedItem {
 }
 
 export default function DetectionPage() {
-  const [detections, setDetections] = useState<DetectionFeedItem[]>([]);
+  const [detections, setDetections] = usePersistedState<DetectionFeedItem[]>("sentinel.detection.detections", []);
   const [socketLive, setSocketLive] = useState(false);
-  const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
-  const [health, setHealth] = useState<HealthApi | null>(null);
+  const [summary, setSummary] = usePersistedState<MetricsSummaryApi | null>("sentinel.detection.summary", null);
+  const [health, setHealth] = usePersistedState<HealthApi | null>("sentinel.detection.health", null);
 
   useEffect(() => {
     let mounted = true;
@@ -70,7 +62,7 @@ export default function DetectionPage() {
           if (mounted) setHealth(data);
         });
       }
-    }, 5000);
+    }, POLLING_INTERVALS.METRICS);
 
     try {
       socket = new WebSocket(getLiveSocketUrl());
@@ -114,7 +106,7 @@ export default function DetectionPage() {
   const chartData = useMemo(
     () =>
       detections
-        .slice(0, 7)
+        .slice(0, DISPLAY_LIMITS.RECENT_DETECTIONS)
         .reverse()
         .map((item, index) => ({
           label: String(index + 1).padStart(2, "0"),
@@ -123,7 +115,7 @@ export default function DetectionPage() {
     [detections],
   );
 
-  const exportCsv = () => {
+  const exportCsv = useCallback(() => {
     const header = "Match ID,Platform,Timestamp,Confidence,Hash Preview,League,Stream URL";
     const rows = detections.map((item) =>
       [
@@ -145,7 +137,7 @@ export default function DetectionPage() {
     link.download = "sentinel_detection_feed.csv";
     link.click();
     URL.revokeObjectURL(url);
-  };
+  }, [detections]);
 
   return (
     <div className="space-y-8">
@@ -189,10 +181,10 @@ export default function DetectionPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-4">
-            <button type="button" className="subtle-button px-6" onClick={exportCsv}>
+            <button type="button" className="subtle-button px-6" onClick={exportCsv} aria-label="Export detection feed to CSV">
               Export CSV
             </button>
-            <button type="button" className="subtle-button px-6" onClick={() => setDetections([])}>
+            <button type="button" className="subtle-button px-6" onClick={() => setDetections([])} aria-label="Clear detection log">
               Clear Log
             </button>
             <div

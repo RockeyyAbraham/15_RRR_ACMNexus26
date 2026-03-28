@@ -65,7 +65,7 @@ export default function UploadBox({ file, onFileSelect }: UploadBoxProps) {
 
         <button
           type="button"
-          className="subtle-button min-w-[180px]"
+          className="cyber-button w-full md:w-auto mt-2 md:mt-0"
           onClick={() => inputRef.current?.click()}
         >
           Select Asset
