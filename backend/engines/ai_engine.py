@@ -112,6 +112,77 @@ Be professional, clear, and actionable."""
         except Exception as e:
             return f"Error generating summary: {str(e)}"
     
+    def analyze_detection(self, detection_data: Dict) -> Dict:
+        """
+        Generate detailed analysis for a specific detection.
+        
+        Args:
+            detection_data: Dictionary containing detection information
+                
+        Returns:
+            Dictionary with detailed analysis
+        """
+        confidence_score = detection_data.get('confidence_score', 0)
+        platform = detection_data.get('platform', 'unknown')
+        content_title = detection_data.get('content_title', 'protected content')
+        
+        # Determine priority level
+        if confidence_score >= 90:
+            priority = "HIGH"
+            action = "IMMEDIATE TAKEDOWN"
+            urgency = "critical"
+            legal_strength = "strong"
+        elif confidence_score >= 70:
+            priority = "MEDIUM"
+            action = "ENHANCED MONITORING"
+            urgency = "moderate"
+            legal_strength = "moderate"
+        else:
+            priority = "LOW"
+            action = "LOGGING ONLY"
+            urgency = "low"
+            legal_strength = "weak"
+        
+        # Platform-specific insights
+        platform_insights = {
+            'twitch': 'Live streaming platform requires rapid response',
+            'youtube': 'Large platform with established takedown processes',
+            'facebook': 'Social media platform with complex content policies',
+            'benchmark': 'Test environment for validation',
+            'unknown': 'Platform analysis needed for optimal strategy'
+        }
+        
+        analysis = {
+            'priority': priority,
+            'recommended_action': action,
+            'urgency': urgency,
+            'legal_strength': legal_strength,
+            'platform_insight': platform_insights.get(platform.lower(), platform_insights['unknown']),
+            'confidence_analysis': f"{confidence_score:.1f}% confidence indicates {'strong match' if confidence_score >= 90 else 'moderate match' if confidence_score >= 70 else 'weak match'}",
+            'next_steps': self._generate_next_steps(priority, confidence_score, platform),
+            'risk_assessment': self._assess_risk(confidence_score, platform)
+        }
+        
+        return analysis
+    
+    def _generate_next_steps(self, priority: str, confidence: float, platform: str) -> str:
+        """Generate specific next steps based on detection parameters."""
+        if priority == "HIGH":
+            return f"1. File immediate takedown notice with {platform} 2. Preserve evidence logs 3. Monitor for re-uploads 4. Consider legal escalation if platform unresponsive"
+        elif priority == "MEDIUM":
+            return f"1. Gather additional evidence 2. Monitor for pattern escalation 3. Prepare takedown notice 4. Assess platform response time"
+        else:
+            return f"1. Log detection pattern 2. Monitor for confidence increase 3. Collect contextual data 4. Review detection parameters"
+    
+    def _assess_risk(self, confidence: float, platform: str) -> str:
+        """Assess risk level and potential impact."""
+        if confidence >= 90:
+            return "High risk - Significant intellectual property violation with strong legal standing"
+        elif confidence >= 70:
+            return "Moderate risk - Potential violation requiring evidence gathering"
+        else:
+            return "Low risk - Possible false positive or low-impact infringement"
+    
     def generate_dmca_notice(self, detection_data: Dict, rights_holder: Dict) -> str:
         """
         Generate an AI-powered DMCA takedown notice.

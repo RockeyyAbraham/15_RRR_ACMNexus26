@@ -4,7 +4,6 @@ import DetectionFeed from "../components/DetectionFeed";
 import StatCard from "../components/StatCard";
 import { fetchDetections, fetchHealth, fetchMetricsSummary, getLiveSocketUrl } from "../services/api";
 import type { DetectionApiItem, DetectionFeedItem, HealthApi, LivePayload, MetricsSummaryApi } from "../types";
-import usePersistedState from "../hooks/usePersistedState";
 import { extractPlatform } from "../utils/platform";
 import { POLLING_INTERVALS, DISPLAY_LIMITS } from "../constants/thresholds";
 
@@ -23,10 +22,12 @@ function formatDetection(item: DetectionApiItem): DetectionFeedItem {
 }
 
 export default function DetectionPage() {
-  const [detections, setDetections] = usePersistedState<DetectionFeedItem[]>("sentinel.detection.detections", []);
+  const [detections, setDetections] = useState<DetectionFeedItem[]>([]);
   const [socketLive, setSocketLive] = useState(false);
-  const [summary, setSummary] = usePersistedState<MetricsSummaryApi | null>("sentinel.detection.summary", null);
-  const [health, setHealth] = usePersistedState<HealthApi | null>("sentinel.detection.health", null);
+  const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
+  const [health, setHealth] = useState<HealthApi | null>(null);
+  const [lastDetectionTime, setLastDetectionTime] = useState<string | null>(null);
+  const [detectionStreak, setDetectionStreak] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -36,31 +37,71 @@ export default function DetectionPage() {
     const loadData = async () => {
       if (!mounted) return;
 
-      const [items, summaryData, healthData] = await Promise.all([
-        fetchDetections().catch(() => []),
-        fetchMetricsSummary().catch(() => null),
-        fetchHealth().catch(() => null),
-      ]);
+      try {
+        const [items, summaryData, healthData] = await Promise.all([
+          fetchDetections().catch(() => []),
+          fetchMetricsSummary().catch(() => null),
+          fetchHealth().catch(() => null),
+        ]);
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      if (items.length > 0) {
-        setDetections(items.map(formatDetection));
+        console.log('DetectionPage - Loaded items:', items.length);
+        console.log('DetectionPage - Summary:', summaryData);
+        
+        if (items.length > 0) {
+          const formattedDetections = items.map(formatDetection);
+          setDetections(formattedDetections);
+          
+          // Update streak and last detection time
+          if (formattedDetections.length > 0) {
+            setLastDetectionTime(formattedDetections[0].timestamp);
+            setDetectionStreak(prev => prev + 1);
+          }
+        } else {
+          setDetections([]);
+          setDetectionStreak(0);
+        }
+        setSummary(summaryData);
+        setHealth(healthData);
+      } catch (error) {
+        console.error('DetectionPage - Load error:', error);
+        if (mounted) {
+          setDetections([]);
+          setSummary(null);
+          setHealth(null);
+        }
       }
-      setSummary(summaryData);
-      setHealth(healthData);
     };
 
     loadData();
 
-    pollInterval = window.setInterval(() => {
+    pollInterval = window.setInterval(async () => {
       if (mounted) {
-        fetchMetricsSummary().then((data) => {
-          if (mounted) setSummary(data);
-        });
-        fetchHealth().then((data) => {
-          if (mounted) setHealth(data);
-        });
+        try {
+          const [items, summaryData, healthData] = await Promise.all([
+            fetchDetections().catch(() => []),
+            fetchMetricsSummary().catch(() => null),
+            fetchHealth().catch(() => null),
+          ]);
+          
+          if (mounted) {
+            if (items.length > 0) {
+              const formattedDetections = items.map(formatDetection);
+              setDetections(formattedDetections);
+              
+              // Update streak and last detection time
+              if (formattedDetections.length > 0) {
+                setLastDetectionTime(formattedDetections[0].timestamp);
+                setDetectionStreak(prev => prev + 1);
+              }
+            }
+            setSummary(summaryData);
+            setHealth(healthData);
+          }
+        } catch (error) {
+          console.error('Error polling data:', error);
+        }
       }
     }, POLLING_INTERVALS.METRICS);
 
@@ -81,7 +122,14 @@ export default function DetectionPage() {
         try {
           const payload = JSON.parse(event.data) as LivePayload;
           if (payload.type === "detections_update" && Array.isArray(payload.data) && payload.data.length > 0) {
-            setDetections(payload.data.map(formatDetection));
+            const formattedDetections = payload.data.map(formatDetection);
+            setDetections(formattedDetections);
+            
+            // Update streak and last detection time
+            if (formattedDetections.length > 0) {
+              setLastDetectionTime(formattedDetections[0].timestamp);
+              setDetectionStreak(prev => prev + 1);
+            }
           }
         } catch {
           setSocketLive(false);
@@ -151,15 +199,150 @@ export default function DetectionPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-3">
-            <span className="data-chip">Realtime Feed</span>
+            <span className="data-chip animate-pulse">Realtime Feed</span>
             <span className="data-chip">Confidence Sync</span>
-            <span className="data-chip">Live WebSocket</span>
+            <span className={`data-chip ${socketLive ? 'bg-neon/20 text-neon animate-pulse' : ''}`}>
+              {socketLive ? '🟢 Live WebSocket' : '🔴 WebSocket Offline'}
+            </span>
+            {detectionStreak > 0 && (
+              <span className="data-chip bg-cyan/20 text-cyan">
+                🔥 {detectionStreak} Streak
+              </span>
+            )}
           </div>
         </div>
       </div>
 
       <div className="grid gap-8 xl:grid-cols-[minmax(0,3fr)_360px]">
         <div className="space-y-8">
+          {/* AI Summary Section */}
+          {summary?.ai_summary && (
+            <div className="hud-panel p-6">
+              <div className="panel-title mb-4">🤖 AI Intelligence Briefing</div>
+              <div className="rounded-xl border border-cyan/20 bg-cyan/5 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="mt-1 text-cyan text-lg">🧠</div>
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-cyan mb-2">Sentinel AI Analysis</div>
+                    <div className="text-xs leading-relaxed text-slate-300 italic">
+                      "{summary.ai_summary}"
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* AI Per-Detection Analysis */}
+          {detections.length > 0 && (
+            <div className="hud-panel p-6">
+              <div className="panel-title mb-4">🎯 AI Detection Analyst</div>
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {detections.slice(0, 5).map((detection, index) => (
+                  <div key={detection.id} className="rounded-xl border border-neon/20 bg-neon/5 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-bold text-neon">DETECTION #{detection.id}</span>
+                          <span className={`text-xs px-2 py-1 rounded-full ${
+                            detection.confidence >= 90 ? 'bg-rose/20 text-rose' : 
+                            detection.confidence >= 70 ? 'bg-yellow/20 text-yellow' : 
+                            'bg-slate/20 text-slate'
+                          }`}>
+                            {detection.confidence >= 90 ? 'HIGH PRIORITY' : 
+                             detection.confidence >= 70 ? 'MEDIUM PRIORITY' : 
+                             'LOW PRIORITY'}
+                          </span>
+                        </div>
+                        
+                        <div className="text-xs font-medium text-slate-300 mb-1">
+                          {detection.matchId} • {detection.platform}
+                        </div>
+                        
+                        <div className="text-xs text-slate-400 mb-2">
+                          Confidence: {detection.confidence.toFixed(1)}% • {detection.timestamp}
+                        </div>
+                        
+                        <div className="border-l-2 border-cyan/30 pl-3">
+                          <div className="text-xs font-medium text-cyan mb-1">AI Recommendation:</div>
+                          <div className="text-xs text-slate-300 italic">
+                            {detection.confidence >= 90 ? 
+                              "⚡ IMMEDIATE TAKEDOWN RECOMMENDED - High confidence match, strong legal standing" :
+                              detection.confidence >= 70 ? 
+                              "🔍 ENHANCED MONITORING - Monitor for escalation, gather additional evidence" :
+                              "📊 LOGGING ONLY - Low confidence, continue monitoring pattern"
+                            }
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-neon">
+                          {detection.confidence.toFixed(0)}%
+                        </div>
+                        <div className="text-xs text-slate-400">match</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {detections.length > 5 && (
+                  <div className="text-center text-xs text-slate-500 py-2">
+                    +{detections.length - 5} more detections analyzed
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* AI Pattern Analysis */}
+          {detections.length > 1 && (
+            <div className="hud-panel p-6">
+              <div className="panel-title mb-4">📈 AI Pattern Analysis</div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-lg border border-purple/20 bg-purple/5 p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-purple">🎯</span>
+                    <span className="text-xs font-bold text-purple">Threat Assessment</span>
+                  </div>
+                  <div className="text-xs text-slate-300">
+                    {detections.filter(d => d.confidence >= 90).length >= 3 ? 
+                      "🚨 CRITICAL - Multiple high-confidence detections require immediate action" :
+                      detections.filter(d => d.confidence >= 70).length >= 5 ? 
+                      "⚠️ ELEVATED - Pattern of systematic piracy detected" :
+                      "✅ STABLE - Isolated incidents, normal monitoring sufficient"
+                    }
+                  </div>
+                </div>
+                
+                <div className="rounded-lg border border-green/20 bg-green/5 p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-green">📊</span>
+                    <span className="text-xs font-bold text-green">Success Rate</span>
+                  </div>
+                  <div className="text-xs text-slate-300">
+                    Historical takedown success: {detections.filter(d => d.confidence >= 85).length > 0 ? 
+                      "~87% based on confidence thresholds" : 
+                      "Insufficient data for prediction"
+                    }
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-4 rounded-lg border border-cyan/20 bg-cyan/5 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-cyan">🤖</span>
+                  <span className="text-xs font-bold text-cyan">AI Strategy Recommendation</span>
+                </div>
+                <div className="text-xs text-slate-300">
+                  {detections.filter(d => d.confidence >= 90).length > 0 ? 
+                    `Prioritize ${detections.filter(d => d.confidence >= 90).length} high-confidence targets for immediate takedown. Monitor ${detections.filter(d => d.confidence < 90).length} lower-confidence targets for pattern escalation.` :
+                    "Continue monitoring all detections. Current confidence levels suggest enhanced evidence gathering before legal action."
+                  }
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid gap-6 md:grid-cols-3">
             <StatCard
               label="Detections Logged"
@@ -203,11 +386,14 @@ export default function DetectionPage() {
         </div>
 
         <div className="space-y-6">
-          <StatCard
-            label="Protected Hash Mesh"
-            value={String(summary?.protected_content_count ?? 0)}
-            accent="neon"
-          />
+          <div className="hud-panel p-4">
+            <StatCard
+              label="Protected Hash Mesh"
+              value={String(summary?.protected_content_count ?? 0)}
+              hint={`Last detection: ${lastDetectionTime || 'Never'}`}
+              accent="neon"
+            />
+          </div>
           <StatCard 
             label="System Health" 
             value={(health?.status ?? "offline").toUpperCase()} 

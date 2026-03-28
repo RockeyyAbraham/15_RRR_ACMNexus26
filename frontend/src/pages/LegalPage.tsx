@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchDetections, fetchMetricsSummary, getDmcaDownloadUrl, submitCandidate } from "../services/api";
 import type { DetectionApiItem, MetricsSummaryApi } from "../types";
-import usePersistedState from "../hooks/usePersistedState";
 import { extractPlatform } from "../utils/platform";
 import { CONFIDENCE_THRESHOLDS, POLLING_INTERVALS, DISPLAY_LIMITS } from "../constants/thresholds";
 
 export default function LegalPage() {
-  const [detections, setDetections] = usePersistedState<DetectionApiItem[]>("sentinel.legal.detections", []);
-  const [summary, setSummary] = usePersistedState<MetricsSummaryApi | null>("sentinel.legal.summary", null);
-  const [actionMessage, setActionMessage] = usePersistedState<string | null>("sentinel.legal.actionMessage", null);
+  const [detections, setDetections] = useState<DetectionApiItem[]>([]);
+  const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const loadPageData = async () => {
     const [detectionItems, summaryData] = await Promise.all([

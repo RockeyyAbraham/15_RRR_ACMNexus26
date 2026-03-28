@@ -16,6 +16,7 @@ export type MetricsSummaryApi = {
   manual_review_count: number;
   candidate_count: number;
   queued_candidates: number;
+  ai_summary?: string;
   thresholds: {
     auto_action: number;
     manual_review: number;

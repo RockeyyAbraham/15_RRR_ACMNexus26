@@ -5,7 +5,6 @@ import StatCard from "../components/StatCard";
 import UploadBox from "../components/UploadBox";
 import { fetchBenchmarkJob, fetchDetections, fetchHealth, fetchMetricsSummary, generateFingerprint, runPiracyBenchmark } from "../services/api";
 import type { BenchmarkJobProgressData, HealthApi, MetricsSummaryApi, PiracyBenchmarkResponse } from "../types";
-import usePersistedState from "../hooks/usePersistedState";
 import { POLLING_INTERVALS, TIMEOUTS, PROGRESS_INCREMENTS, DISPLAY_LIMITS } from "../constants/thresholds";
 
 type WorkflowCard = {
@@ -84,20 +83,21 @@ function applyProgressToCards(cards: WorkflowCard[], progress: BenchmarkJobProgr
 
 export default function IngestPage() {
   const [file, setFile] = useState<File | null>(null);
-  const [leagueName, setLeagueName] = usePersistedState("sentinel.ingest.leagueName", "");
-  const [matchId, setMatchId] = usePersistedState("sentinel.ingest.matchId", "");
-  const [broadcastDate, setBroadcastDate] = usePersistedState("sentinel.ingest.broadcastDate", "");
-  const [contentTitle, setContentTitle] = usePersistedState("sentinel.ingest.contentTitle", "");
+  const [leagueName, setLeagueName] = useState("");
+  const [matchId, setMatchId] = useState("");
+  const [broadcastDate, setBroadcastDate] = useState("");
+  const [contentTitle, setContentTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
-  const [message, setMessage] = usePersistedState<string | null>("sentinel.ingest.message", null);
-  const [error, setError] = usePersistedState<string | null>("sentinel.ingest.error", null);
-  const [benchmarkResult, setBenchmarkResult] = usePersistedState<PiracyBenchmarkResponse | null>("sentinel.ingest.benchmarkResult", null);
-  const [progress, setProgress] = usePersistedState("sentinel.ingest.progress", { video: 91, audio: 64 });
-  const [workflowCards, setWorkflowCards] = usePersistedState<WorkflowCard[]>("sentinel.ingest.workflowCards", []);
-  const [summary, setSummary] = usePersistedState<MetricsSummaryApi | null>("sentinel.ingest.summary", null);
-  const [health, setHealth] = usePersistedState<HealthApi | null>("sentinel.ingest.health", null);
-  const [recentConfidence, setRecentConfidence] = usePersistedState<Array<{ label: string; value: number }>>("sentinel.ingest.recentConfidence", []);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [benchmarkResult, setBenchmarkResult] = useState<PiracyBenchmarkResponse | null>(null);
+  const [fingerprintProgress, setFingerprintProgress] = useState({ video: 0, audio: 0 });
+  const [benchmarkProgress, setBenchmarkProgress] = useState(0);
+  const [workflowCards, setWorkflowCards] = useState<WorkflowCard[]>([]);
+  const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
+  const [health, setHealth] = useState<HealthApi | null>(null);
+  const [recentConfidence, setRecentConfidence] = useState<Array<{ label: string; value: number }>>([]);
   // Auto-detect content info from filename
   useEffect(() => {
     if (file) {
@@ -248,25 +248,25 @@ export default function IngestPage() {
   const fingerprintDetails = useMemo(
     () => [
       {
-        label: "Engine Matrix",
-        value: `${health?.engines?.length ?? 0} ONLINE`,
-        hint: health?.engines?.join(", ") ?? "No engine telemetry available",
+        label: "Forensic Analysis",
+        value: `${summary?.protected_content_count ?? 0} CONTENT`,
+        hint: `Hash signatures: ${(summary?.protected_content_count ?? 0) * 1000}+ signatures`,
         accent: "neon" as const,
       },
       {
-        label: "System Status",
-        value: (health?.status ?? "offline").toUpperCase(),
-        hint: `Jobs active: ${summary?.async.active_jobs ?? 0}`,
+        label: "Detection Matrix",
+        value: `${summary?.detections_count ?? 0} DETECTED`,
+        hint: `Confidence avg: ${summary?.average_confidence?.toFixed(1) ?? 0}%`,
         accent: "cyan" as const,
       },
       {
-        label: "Review Threshold",
+        label: "Analysis Threshold",
         value: `${summary?.thresholds.manual_review ?? 0}%`,
-        hint: `Auto action: ${summary?.thresholds.auto_action ?? 0}%`,
+        hint: `Auto action at: ${summary?.thresholds.auto_action ?? 0}% confidence`,
         accent: "default" as const,
       },
     ],
-    [health, summary],
+    [summary],
   );
 
   const handleSubmit = useCallback(async () => {
@@ -279,13 +279,13 @@ export default function IngestPage() {
     setLoading(true);
     setError(null);
     setMessage(null);
-    setProgress({ video: 28, audio: 12 });
+    setFingerprintProgress({ video: 28, audio: 12 });
 
     let interval: number | null = null;
 
     try {
       interval = window.setInterval(() => {
-        setProgress((current) => ({
+        setFingerprintProgress((current) => ({
           video: Math.min(current.video + PROGRESS_INCREMENTS.VIDEO_STEP, PROGRESS_INCREMENTS.VIDEO_MAX),
           audio: Math.min(current.audio + PROGRESS_INCREMENTS.AUDIO_STEP, PROGRESS_INCREMENTS.AUDIO_MAX),
         }));
@@ -298,24 +298,25 @@ export default function IngestPage() {
         file,
       });
 
-      setProgress({ video: 100, audio: 100 });
+      setFingerprintProgress({ video: 100, audio: 100 });
       setMessage(
         `${result.message}. Content ID ${result.content_id} indexed with ${result.video_hash_count} protected hashes.`,
       );
       const refreshedSummary = await fetchMetricsSummary();
       setSummary(refreshedSummary);
-      setBenchmarkResult(null);
-      setWorkflowCards([]);
+      // Don't clear benchmark results - keep them for user reference
+      // setBenchmarkResult(null);
+      // setWorkflowCards([]);
     } catch {
       setError("Fingerprint generation failed. Verify the Flask backend is online.");
-      setProgress({ video: 0, audio: 0 });
+      setFingerprintProgress({ video: 0, audio: 0 });
     } finally {
       if (interval !== null) {
         window.clearInterval(interval);
       }
       setLoading(false);
     }
-  }, [file, contentTitle, matchId, leagueName, broadcastDate, setMessage, setError, setProgress, setSummary, setBenchmarkResult, setWorkflowCards]);
+  }, [file, contentTitle, matchId, leagueName, broadcastDate]);
 
   const handleRunBenchmark = useCallback(async () => {
     if (!file) {
@@ -347,10 +348,7 @@ export default function IngestPage() {
         const progressData = job.progress_data ?? {};
         const percent = Math.max(0, Math.min(100, progressData.progress_percent ?? 0));
 
-        setProgress({
-          video: percent,
-          audio: Math.max(0, Math.min(100, percent - 8)),
-        });
+        setBenchmarkProgress(percent);
 
         if (job.stage === "variant_analyzing" || job.stage === "variant_analyzed") {
           setWorkflowCards((prev) => applyProgressToCards(prev, progressData, job.stage));
@@ -432,7 +430,7 @@ export default function IngestPage() {
     } finally {
       setBenchmarkLoading(false);
     }
-  }, [file, contentTitle, matchId, leagueName, broadcastDate, setMessage, setError, setWorkflowCards, setBenchmarkResult, setProgress, setSummary, setHealth, setRecentConfidence]);
+  }, [file, contentTitle, matchId, leagueName, broadcastDate]);
 
   return (
     <div className="space-y-8">
@@ -453,16 +451,19 @@ export default function IngestPage() {
         </div>
       </div>
 
-      <div className="grid gap-8 xl:grid-cols-[minmax(0,3fr)_360px]">
-        <div className="space-y-8">
-          <div className="hud-panel p-8 md:p-10">
-            <div className="grid gap-10 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,1fr)]">
-              <div>
-                <div className="panel-title mb-6">Reference Video Source</div>
-                <UploadBox file={file} onFileSelect={setFile} />
-              </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Left Column - Upload & Metadata */}
+        <div className="space-y-6">
+          {/* Video Upload Section */}
+          <div className="hud-panel p-6">
+            <div className="panel-title mb-4">📹 Video Upload</div>
+            <UploadBox file={file} onFileSelect={setFile} />
+          </div>
 
-              <div className="space-y-6">
+          {/* Metadata Section */}
+          <div className="hud-panel p-6">
+            <div className="panel-title mb-6">📝 Content Metadata</div>
+            <div className="space-y-5">
                 <label className="block">
                   <span className="mb-2.5 block text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Content Title</span>
                   <input
@@ -527,205 +528,245 @@ export default function IngestPage() {
                   ) : null}
                 </label>
 
-                <motion.button
-                  type="button"
-                  className="cyber-button w-full mt-2"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleSubmit}
-                  disabled={loading || benchmarkLoading}
-                  aria-label="Generate fingerprint for uploaded video"
-                >
-                  {loading ? (
-                    <span className="flex items-center gap-3">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-900 border-t-transparent" />
-                      Processing...
-                    </span>
-                  ) : "Generate Fingerprint"}
-                </motion.button>
+            </div>
+          </div>
 
-                <button
-                  type="button"
-                  className="subtle-button w-full flex items-center justify-center gap-3 py-4 text-[10px] font-bold uppercase tracking-[0.2em]"
-                  onClick={handleRunBenchmark}
-                  disabled={loading || benchmarkLoading}
-                  aria-label="Execute piracy detection benchmark across 17 variants"
-                >
-                  {benchmarkLoading ? (
-                    <>
-                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-                      Benchmarking 17-Variants...
-                    </>
-                  ) : (
-                    "Execute Piracy Benchmark"
-                  )}
-                </button>
+          {/* Action Buttons */}
+          <div className="hud-panel p-6">
+            <div className="panel-title mb-4">⚡ Actions</div>
+            <div className="space-y-3">
+              <motion.button
+                type="button"
+                className="cyber-button w-full"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleSubmit}
+                disabled={loading || benchmarkLoading}
+                aria-label="Generate fingerprint for uploaded video"
+              >
+                {loading ? (
+                  <span className="flex items-center gap-3">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-900 border-t-transparent" />
+                    Processing...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <span>🔐</span> Generate Fingerprint
+                  </span>
+                )}
+              </motion.button>
 
-                {message ? (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="rounded-2xl border border-neon/20 bg-neon/10 px-5 py-4 text-xs font-bold uppercase tracking-widest text-neon leading-relaxed"
+              <button
+                type="button"
+                className="subtle-button w-full flex items-center justify-center gap-3 py-4 text-[10px] font-bold uppercase tracking-[0.2em]"
+                onClick={handleRunBenchmark}
+                disabled={loading || benchmarkLoading}
+                aria-label="Execute piracy detection benchmark across 17 variants"
+              >
+                {benchmarkLoading ? (
+                  <>
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                    Benchmarking 17-Variants...
+                  </>
+                ) : (
+                  <>
+                    <span>🎯</span> Execute Piracy Benchmark
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column - Status & Results */}
+        <div className="space-y-6">
+          {/* Status Messages */}
+          <div className="hud-panel p-6 min-h-[120px]">
+            <div className="panel-title mb-4">📊 Status</div>
+
+            {message ? (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-xl border border-neon/20 bg-neon/10 px-4 py-3 text-xs font-medium tracking-wide text-neon leading-relaxed"
+              >
+                {message}
+              </motion.div>
+            ) : error ? (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-xl border border-rose/20 bg-rose/10 px-4 py-3 text-xs font-medium tracking-wide text-rose leading-relaxed"
+              >
+                {error}
+              </motion.div>
+            ) : (
+              <div className="text-sm text-slate-500 italic">
+                No active operations
+              </div>
+            )}
+          </div>
+
+          {/* Workflow Pipeline */}
+          {workflowCards && workflowCards.length > 0 && (
+            <div className="hud-panel p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="panel-title">🔄 Variant Pipeline</div>
+                <div className="font-mono text-xs text-slate-400">
+                  {workflowCards.filter(c => c.status === 'completed' || c.status === 'detected').length}/{workflowCards.length}
+                </div>
+              </div>
+              
+              <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
+                {workflowCards.map((card, index) => (
+                  <div
+                    key={card.id || index}
+                    className={`
+                      rounded-lg border p-3 space-y-2 transition-all duration-300
+                      ${card.status === 'pending' ? 'border-slate-700 bg-slate-900/30' : ''}
+                      ${card.status === 'generating' ? 'border-cyan/30 bg-cyan/5' : ''}
+                      ${card.status === 'analyzing' ? 'border-purple/30 bg-purple/5' : ''}
+                      ${card.status === 'completed' ? 'border-green/30 bg-green/5' : ''}
+                      ${card.status === 'detected' ? 'border-rose/30 bg-rose/5' : ''}
+                      ${card.status === 'error' ? 'border-rose/30 bg-rose/5' : ''}
+                    `}
                   >
-                    {message}
-                  </motion.div>
-                ) : null}
-                                {workflowCards && workflowCards.length > 0 && (
-                  <div className="rounded-2xl border border-neon/20 bg-slate-950/60 p-6 space-y-4">
                     <div className="flex items-center justify-between">
-                      <div className="font-display text-sm font-bold uppercase tracking-[0.2em] text-neon">
-                        🔄 Variant Processing Pipeline
+                      <div className="flex items-center gap-2">
+                        <div className={`
+                          w-6 h-6 rounded-full flex items-center justify-center text-xs
+                          ${card.status === 'pending' ? 'bg-slate-800 text-slate-500' : ''}
+                          ${card.status === 'generating' ? 'bg-cyan/20 text-cyan animate-pulse' : ''}
+                          ${card.status === 'analyzing' ? 'bg-purple/20 text-purple animate-pulse' : ''}
+                          ${card.status === 'completed' ? 'bg-green/20 text-green' : ''}
+                          ${card.status === 'detected' ? 'bg-rose/20 text-rose' : ''}
+                          ${card.status === 'error' ? 'bg-rose/20 text-rose' : ''}
+                        `}>
+                          {card.status === 'pending' ? '⏸' : ''}
+                          {card.status === 'generating' ? '⚙️' : ''}
+                          {card.status === 'analyzing' ? '🔬' : ''}
+                          {card.status === 'completed' ? '✅' : ''}
+                          {card.status === 'detected' ? '🔴' : ''}
+                          {card.status === 'error' ? '❌' : ''}
+                        </div>
+                        <div>
+                          <div className="font-mono text-[10px] text-slate-400">{card.name || 'Unknown'}</div>
+                          <div className="text-xs font-medium text-slate-200">{card.description || 'Processing...'}</div>
+                        </div>
                       </div>
-                      <div className="font-mono text-xs text-slate-400">
-                        {workflowCards.filter(c => c.status === 'completed' || c.status === 'detected').length}/{workflowCards.length}
-                      </div>
+                      
+                      {card.status !== 'pending' && (
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          {card.progress || 0}%
+                        </div>
+                      )}
                     </div>
                     
-                    <div className="space-y-3 max-h-96 overflow-y-auto">
-                      {workflowCards.map((card, index) => (
+                    {(card.status === 'generating' || card.status === 'analyzing') && (
+                      <div className="h-1 overflow-hidden rounded-full bg-slate-800">
                         <div
-                          key={card.id || index}
                           className={`
-                            rounded-xl border p-4 space-y-3 transition-all duration-300
-                            ${card.status === 'pending' ? 'border-slate-700 bg-slate-900/30' : ''}
-                            ${card.status === 'generating' ? 'border-cyan/30 bg-cyan/5 shadow-[0_0_20px_rgba(6,182,212,0.1)]' : ''}
-                            ${card.status === 'analyzing' ? 'border-purple/30 bg-purple/5 shadow-[0_0_20px_rgba(168,85,247,0.1)]' : ''}
-                            ${card.status === 'completed' ? 'border-green/30 bg-green/5' : ''}
-                            ${card.status === 'detected' ? 'border-rose/30 bg-rose/5 shadow-[0_0_20px_rgba(244,63,94,0.1)]' : ''}
-                            ${card.status === 'error' ? 'border-rose/30 bg-rose/5' : ''}
+                            h-full rounded-full transition-all duration-500
+                            ${card.status === 'generating' ? 'bg-cyan' : 'bg-purple'}
                           `}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className={`
-                                w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold
-                                ${card.status === 'pending' ? 'bg-slate-800 text-slate-500' : ''}
-                                ${card.status === 'generating' ? 'bg-cyan/20 text-cyan animate-pulse' : ''}
-                                ${card.status === 'analyzing' ? 'bg-purple/20 text-purple animate-pulse' : ''}
-                                ${card.status === 'completed' ? 'bg-green/20 text-green' : ''}
-                                ${card.status === 'detected' ? 'bg-rose/20 text-rose' : ''}
-                                ${card.status === 'error' ? 'bg-rose/20 text-rose' : ''}
-                              `}>
-                                {card.status === 'pending' ? '⏸' : ''}
-                                {card.status === 'generating' ? '⚙️' : ''}
-                                {card.status === 'analyzing' ? '🔬' : ''}
-                                {card.status === 'completed' ? '✅' : ''}
-                                {card.status === 'detected' ? '🔴' : ''}
-                                {card.status === 'error' ? '❌' : ''}
-                              </div>
-                              <div>
-                                <div className="font-mono text-xs text-slate-400">{card.name || 'Unknown'}</div>
-                                <div className="text-sm font-medium text-slate-200">{card.description || 'Processing...'}</div>
-                              </div>
-                            </div>
-                            
-                            {card.status !== 'pending' && (
-                              <div className="text-xs text-slate-400">
-                                {card.progress || 0}%
-                              </div>
-                            )}
-                          </div>
-                          
-                          {(card.status === 'generating' || card.status === 'analyzing') && (
-                            <div className="h-1 overflow-hidden rounded-full bg-slate-800">
-                              <div
-                                className={`
-                                  h-full rounded-full transition-all duration-500
-                                  ${card.status === 'generating' ? 'bg-cyan' : 'bg-purple'}
-                                `}
-                                style={{ width: `${card.progress || 0}%` }}
-                              />
-                            </div>
-                          )}
-                          
-                          {(card.status === 'completed' || card.status === 'detected') && card.combinedConfidence !== undefined && (
-                            <div className="flex items-center justify-between text-xs">
-                              <div className="flex gap-4">
-                                <span className="text-slate-400">Video: <span className="text-cyan font-mono">{(card.videoConfidence || 0).toFixed(1)}%</span></span>
-                                <span className="text-slate-400">Audio: <span className="text-purple font-mono">{(card.audioConfidence || 0).toFixed(1)}%</span></span>
-                              </div>
-                              <div className={`
-                                font-mono font-bold
-                                ${card.status === 'detected' ? 'text-rose' : 'text-green'}
-                              `}>
-                                {(card.combinedConfidence || 0).toFixed(1)}%
-                              </div>
-                            </div>
-                          )}
-                          
-                          {card.status === 'error' && (
-                            <div className="text-xs text-rose">
-                              {card.error || 'Processing failed'}
-                            </div>
-                          )}
+                          style={{ width: `${card.progress || 0}%` }}
+                        />
+                      </div>
+                    )}
+                    
+                    {(card.status === 'completed' || card.status === 'detected') && (
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="rounded bg-slate-900/50 px-2 py-1.5">
+                          <div className="text-[9px] uppercase tracking-wider text-slate-500">Video</div>
+                          <div className="font-mono text-xs font-bold text-cyan">{card.videoConfidence?.toFixed(1) || '0.0'}%</div>
                         </div>
-                      ))}
-                    </div>
+                        <div className="rounded bg-slate-900/50 px-2 py-1.5">
+                          <div className="text-[9px] uppercase tracking-wider text-slate-500">Audio</div>
+                          <div className="font-mono text-xs font-bold text-purple">{card.audioConfidence?.toFixed(1) || '0.0'}%</div>
+                        </div>
+                        <div className="rounded bg-slate-900/50 px-2 py-1.5">
+                          <div className="text-[9px] uppercase tracking-wider text-slate-500">Combined</div>
+                          <div className={`font-mono text-xs font-bold ${
+                            (card.combinedConfidence || 0) >= 85 ? 'text-rose' : 'text-neon'
+                          }`}>
+                            {card.combinedConfidence?.toFixed(1) || '0.0'}%
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {card.error && (
+                      <div className="text-xs text-rose">
+                        {card.error}
+                      </div>
+                    )}
                   </div>
-                )}
-                {error ? (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-5 py-4 text-xs font-bold uppercase tracking-widest text-rose-300 leading-relaxed"
-                  >
-                    {error}
-                  </motion.div>
-                ) : null}
+                ))}
               </div>
             </div>
+          )}
 
-            <div className="mt-10 grid gap-8 md:grid-cols-2">
-              <div className="rounded-3xl border border-white/5 bg-white/[0.02] p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="font-display text-[10px] font-bold uppercase tracking-[0.2em] text-muted/60">Video pHash Matrix</div>
-                  <div className="text-[10px] font-bold text-neon">{progress.video}%</div>
+          {/* Progress Bars */}
+          <div className="hud-panel p-6">
+            <div className="panel-title mb-4">⚙️ {loading ? 'Fingerprint Generation' : 'Benchmark'} Status</div>
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Video pHash Matrix</div>
+                  <div className="text-[10px] font-bold text-neon">{loading ? fingerprintProgress.video : benchmarkProgress}%</div>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-slate-900/50">
                   <motion.div
                     className="h-full rounded-full bg-gradient-to-r from-neon/40 via-neon to-neon shadow-[0_0_15px_rgba(212,255,0,0.3)]"
-                    animate={{ width: `${progress.video}%` }}
+                    animate={{ width: `${loading ? fingerprintProgress.video : benchmarkProgress}%` }}
                     transition={{ type: "spring", bounce: 0, duration: 0.8 }}
                   />
                 </div>
               </div>
-              <div className="rounded-3xl border border-white/5 bg-white/[0.02] p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="font-display text-[10px] font-bold uppercase tracking-[0.2em] text-muted/60">Audio Spectrogram</div>
-                  <div className="text-[10px] font-bold text-cyan">{progress.audio}%</div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Audio Spectrogram</div>
+                  <div className="text-[10px] font-bold text-cyan">{loading ? fingerprintProgress.audio : Math.max(0, benchmarkProgress - 8)}%</div>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-slate-900/50">
                   <motion.div
                     className="h-full rounded-full bg-gradient-to-r from-cyan/40 via-cyan to-cyan shadow-[0_0_15px_rgba(0,234,255,0.3)]"
-                    animate={{ width: `${progress.audio}%` }}
+                    animate={{ width: `${loading ? fingerprintProgress.audio : Math.max(0, benchmarkProgress - 8)}%` }}
                     transition={{ type: "spring", bounce: 0, duration: 0.8 }}
                   />
                 </div>
               </div>
             </div>
           </div>
-
-          <div className="grid gap-6 md:grid-cols-3">
-            {fingerprintDetails.map((card) => (
-              <StatCard key={card.label} {...card} />
-            ))}
-          </div>
         </div>
+      </div>
 
+      {/* Bottom Section - System Stats */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {fingerprintDetails.map((card) => (
+          <StatCard key={card.label} {...card} />
+        ))}
+      </div>
+
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,3fr)_360px]">
         <div className="space-y-6">
-          <div className="panel-title px-1">Global Intelligence</div>
-          <StatCard
-            label="Total Protected Hashes"
-            value={String(summary?.protected_content_count ?? 0)}
-            hint={`Detections: ${summary?.detections_count ?? 0}`}
-            accent="neon"
-          />
-          <StatCard
-            label="System Sync Status"
-            value={(health?.status ?? "offline").toUpperCase()}
-            hint={`Engines online: ${health?.engines?.length ?? 0}`}
-            accent="default"
-          />
+          <div className="panel-title mb-4">🔍 Forensic Intelligence</div>
+          <div className="hud-panel p-4">
+            <StatCard
+              label="Total Protected Hashes"
+              value={String(summary?.protected_content_count ?? 0)}
+              hint={`Detections: ${summary?.detections_count ?? 0}`}
+              accent="neon"
+            />
+          </div>
+          <div className="hud-panel p-4">
+            <StatCard
+              label="System Sync Status"
+              value={(health?.status ?? "offline").toUpperCase()}
+              hint={`Engines online: ${health?.engines?.length ?? 0}`}
+              accent="default"
+            />
+          </div>
           <ChartPanel
             title="Threat Confidence History"
             data={recentConfidence.length > 0 ? recentConfidence : [{ label: "00", value: 0 }]}

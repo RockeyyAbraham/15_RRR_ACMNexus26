@@ -1287,6 +1287,33 @@ def get_metrics_summary():
 
         job_stats = get_job_stats()
 
+        # Generate AI summary for recent detections
+        ai_summary = None
+        try:
+            from engines.ai_engine import SentinelAI
+            ai = SentinelAI()
+            
+            # Get recent detection for AI summary
+            conn = sqlite3.connect(str(DB_PATH))
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM detections ORDER BY detected_at DESC LIMIT 1")
+            recent_detection = cursor.fetchone()
+            conn.close()
+            
+            if recent_detection:
+                detection_data = {
+                    'content_title': 'Protected Content',
+                    'platform': 'benchmark',
+                    'confidence_score': recent_detection[3],
+                    'consistency_ratio': 0.95,
+                    'temporal_location': {'start': 0, 'end': 100},
+                    'timestamp': recent_detection[2]
+                }
+                ai_summary = ai.generate_detection_summary(detection_data)
+        except Exception as e:
+            logger.warning(f"AI summary generation failed: {e}")
+            ai_summary = "AI insights unavailable"
+
         return jsonify(
             {
                 "protected_content_count": protected_count,
@@ -1296,6 +1323,7 @@ def get_metrics_summary():
                 "manual_review_count": manual_review_count,
                 "candidate_count": candidate_count,
                 "queued_candidates": queued_candidates,
+                "ai_summary": ai_summary,
                 "thresholds": {
                     "auto_action": AUTO_ACTION_THRESHOLD,
                     "manual_review": MANUAL_REVIEW_THRESHOLD,

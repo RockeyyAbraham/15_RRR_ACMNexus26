@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchDetections, fetchMetricsSummary, getDmcaDownloadUrl } from "../services/api";
 import StatCard from "../components/StatCard";
 import type { DetectionApiItem, MetricsSummaryApi } from "../types";
-import usePersistedState from "../hooks/usePersistedState";
 import { extractPlatform } from "../utils/platform";
 import { POLLING_INTERVALS } from "../constants/thresholds";
 
 export default function EvidencePage() {
-  const [summary, setSummary] = usePersistedState<MetricsSummaryApi | null>("sentinel.evidence.summary", null);
-  const [detections, setDetections] = usePersistedState<DetectionApiItem[]>("sentinel.evidence.detections", []);
+  const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
+  const [detections, setDetections] = useState<DetectionApiItem[]>([]);
 
   useEffect(() => {
     let mounted = true;
