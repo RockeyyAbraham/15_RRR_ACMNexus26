@@ -119,6 +119,23 @@
       inset 0 0 60px rgba(212, 255, 0, 0.05);
     animation: splash-pulse 2.8s ease-in-out infinite;
   }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar-track {
+    display: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar-thumb {
+    display: none;
+  }
 }
 
 @keyframes splash-pulse {

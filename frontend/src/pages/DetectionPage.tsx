@@ -237,7 +237,7 @@ export default function DetectionPage() {
           {detections.length > 0 && (
             <div className="hud-panel p-6">
               <div className="panel-title mb-4">🎯 AI Detection Analyst</div>
-              <div className="space-y-3 max-h-96 overflow-y-auto">
+              <div className="space-y-3 max-h-96 overflow-y-auto scrollbar-hide">
                 {detections.slice(0, 5).map((detection, index) => (
                   <div key={detection.id} className="rounded-xl border border-neon/20 bg-neon/5 p-4">
                     <div className="flex items-start justify-between gap-3">
