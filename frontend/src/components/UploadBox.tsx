@@ -23,8 +23,8 @@ export default function UploadBox({ file, onFileSelect }: UploadBoxProps) {
   return (
     <div
       className={[
-        "relative rounded-2xl border border-dashed p-6 transition duration-200",
-        isDragging ? "border-neon bg-neon/10 shadow-neon" : "border-neon/30 bg-slate-950/70",
+        "relative rounded-3xl border border-dashed p-8 transition-all duration-300 backdrop-blur-md",
+        isDragging ? "border-neon bg-neon/10 shadow-[0_0_30px_rgba(212,255,0,0.1)]" : "border-white/10 bg-slate-950/40 hover:border-white/20",
       ].join(" ")}
       onDragOver={(event) => {
         event.preventDefault();
@@ -45,31 +45,34 @@ export default function UploadBox({ file, onFileSelect }: UploadBoxProps) {
         onChange={(event) => handleFiles(event.target.files)}
       />
 
-      <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="font-display text-sm uppercase tracking-[0.22em] text-white">
-            {file ? file.name : "Drag and drop file here"}
+      <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+        <div className="flex-1">
+          <div className="font-display text-sm font-bold uppercase tracking-[0.15em] text-white">
+            {file ? file.name : "Drag & Drop Reference Video"}
           </div>
-          <div className="mt-2 text-sm text-muted">
-            Limit 200MB per file · MP4, MKV, MOV, MPEG4
+          <div className="mt-2 text-xs font-medium uppercase tracking-widest text-muted/60">
+            Limit 200MB · MP4, MKV, MOV, MPEG4
           </div>
         </div>
 
         <button
           type="button"
-          className="subtle-button min-w-[160px]"
+          className="subtle-button min-w-[180px]"
           onClick={() => inputRef.current?.click()}
         >
-          Browse Files
+          Select Asset
         </button>
       </div>
 
       {file ? (
-        <div className="mt-4 flex items-center justify-between rounded-xl border border-cyan/25 bg-cyan/5 px-4 py-3 text-sm text-cyan">
-          <span>{(file.size / (1024 * 1024)).toFixed(2)} MB loaded</span>
+        <div className="mt-6 flex items-center justify-between rounded-2xl border border-cyan/20 bg-cyan/5 px-5 py-4 text-xs font-bold uppercase tracking-widest text-cyan">
+          <div className="flex items-center gap-3">
+            <span className="h-2 w-2 rounded-full bg-cyan shadow-[0_0_8px_rgba(0,234,255,0.6)]" />
+            {(file.size / (1024 * 1024)).toFixed(2)} MB Loaded
+          </div>
           <button
             type="button"
-            className="font-display text-xs uppercase tracking-[0.18em] text-white"
+            className="font-display text-[10px] uppercase font-bold tracking-[0.2em] text-white/40 hover:text-white transition-colors"
             onClick={() => onFileSelect(null)}
           >
             Clear

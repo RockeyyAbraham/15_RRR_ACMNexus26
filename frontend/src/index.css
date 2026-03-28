@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;800;900&family=Rajdhani:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Orbitron:wght@600;800&family=JetBrains+Mono:wght@400;500&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -8,21 +8,21 @@
   :root {
     color: #e8edf4;
     background:
-      radial-gradient(circle at 20% 0%, rgba(0, 234, 255, 0.08), transparent 35%),
-      radial-gradient(circle at 80% 10%, rgba(212, 255, 0, 0.08), transparent 40%),
+      radial-gradient(circle at 20% 0%, rgba(0, 234, 255, 0.05), transparent 40%),
+      radial-gradient(circle at 80% 10%, rgba(212, 255, 0, 0.04), transparent 45%),
       #05070d;
-    font-family: "Rajdhani", sans-serif;
+    font-family: "Inter", sans-serif;
   }
 
   * {
-    @apply border-white/10;
+    @apply border-white/5;
   }
 
   body {
     @apply m-0 min-h-screen bg-abyss text-ink antialiased;
     background:
-      radial-gradient(circle at 20% 0%, rgba(0, 234, 255, 0.08), transparent 35%),
-      radial-gradient(circle at 80% 10%, rgba(212, 255, 0, 0.08), transparent 40%),
+      radial-gradient(circle at 20% 0%, rgba(0, 234, 255, 0.05), transparent 40%),
+      radial-gradient(circle at 80% 10%, rgba(212, 255, 0, 0.04), transparent 45%),
       #05070d;
   }
 
@@ -39,11 +39,11 @@
 
 @layer components {
   .glass-card {
-    @apply rounded-2xl border border-neon/15 bg-slate-950/70 shadow-glass backdrop-blur-xl;
+    @apply rounded-3xl border border-white/10 bg-slate-950/40 shadow-xl backdrop-blur-2xl;
   }
 
   .hud-panel {
-    @apply relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(8,12,22,0.92),rgba(5,7,13,0.82))] shadow-glass;
+    @apply relative overflow-hidden rounded-[2.5rem] border border-white/5 bg-slate-950/50 shadow-2xl backdrop-blur-3xl;
   }
 
   .hud-panel::before {
@@ -51,101 +51,103 @@
     position: absolute;
     inset: 0;
     background:
-      linear-gradient(135deg, rgba(0, 234, 255, 0.06), transparent 30%),
-      linear-gradient(315deg, rgba(212, 255, 0, 0.05), transparent 28%);
+      linear-gradient(135deg, rgba(0, 234, 255, 0.03), transparent 40%),
+      linear-gradient(315deg, rgba(212, 255, 0, 0.02), transparent 35%);
     pointer-events: none;
   }
 
   .panel-title {
-    @apply font-display text-xs uppercase tracking-[0.34em] text-neon;
+    @apply font-display text-[11px] uppercase tracking-[0.45em] text-neon/80;
   }
 
   .panel-heading {
-    @apply font-display text-4xl tracking-[0.04em] text-white md:text-5xl;
+    @apply font-display text-4xl font-extrabold tracking-tight text-white md:text-5xl;
   }
 
   .section-shell {
-    @apply relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(6,9,16,0.94),rgba(8,12,20,0.78))] p-5 shadow-glass;
+    @apply relative overflow-hidden rounded-[2.5rem] border border-white/5 bg-slate-950/30 p-8 shadow-xl backdrop-blur-md;
   }
 
   .section-shell::after {
     content: "";
     position: absolute;
-    inset: auto 1.25rem 0.85rem 1.25rem;
+    inset: auto 2rem 1.25rem 2rem;
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(212, 255, 0, 0.35), transparent);
+    background: linear-gradient(90deg, transparent, rgba(212, 255, 0, 0.2), transparent);
     pointer-events: none;
   }
 
   .data-chip {
-    @apply inline-flex items-center gap-2 rounded-full border border-cyan/20 bg-cyan/10 px-3 py-1 font-display text-[10px] uppercase tracking-[0.24em] text-cyan;
+    @apply inline-flex items-center gap-2 rounded-full border border-cyan/15 bg-cyan/5 px-4 py-1.5 font-display text-[10px] uppercase tracking-[0.3em] text-cyan transition-all hover:border-cyan/30 hover:bg-cyan/10;
   }
 
   .cyber-button {
-    @apply rounded-xl border border-neon/70 bg-neon px-5 py-3 font-display text-sm uppercase tracking-[0.22em] text-slate-950 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_0_30px_rgba(212,255,0,0.75)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0;
+    @apply relative flex items-center justify-center gap-2 rounded-2xl bg-neon px-8 py-4 font-display text-xs font-bold uppercase tracking-[0.25em] text-slate-950 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(212,255,0,0.6)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40;
   }
 
   .subtle-button {
-    @apply rounded-xl border border-cyan/30 bg-slate-950/70 px-4 py-3 font-display text-xs uppercase tracking-[0.22em] text-ink transition duration-200 hover:border-neon/70 hover:text-neon hover:shadow-cyan;
+    @apply flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-3.5 font-display text-[10px] font-semibold uppercase tracking-[0.3em] text-ink transition-all duration-300 hover:border-neon/50 hover:bg-neon/5 hover:text-neon hover:shadow-[0_0_20px_rgba(212,255,0,0.1)];
   }
 
   .field-shell {
-    @apply rounded-xl border border-neon/20 bg-slate-950/80 px-4 py-3 text-ink outline-none transition duration-200 placeholder:text-muted focus:border-cyan/70 focus:shadow-cyan;
+    @apply rounded-2xl border border-white/10 bg-slate-950/60 px-5 py-4 text-sm text-ink outline-none transition-all duration-300 placeholder:text-muted/50 focus:border-neon/40 focus:bg-slate-950/80 focus:shadow-[0_0_20px_rgba(212,255,0,0.05)];
   }
 
   .scanline-overlay {
     background-image:
       repeating-linear-gradient(
         180deg,
-        rgba(255, 255, 255, 0.028) 0,
-        rgba(255, 255, 255, 0.028) 1px,
+        rgba(255, 255, 255, 0.015) 0,
+        rgba(255, 255, 255, 0.015) 1px,
         transparent 2px,
         transparent 4px
       );
   }
 
   .splash-title {
+    @apply font-extrabold tracking-tighter;
     text-shadow:
-      0 0 12px rgba(255, 255, 255, 0.3),
-      0 0 34px rgba(212, 255, 0, 0.45),
-      0 0 70px rgba(0, 234, 255, 0.18);
-    animation: splash-flicker 2.2s ease-in-out infinite;
+      0 0 15px rgba(255, 255, 255, 0.4),
+      0 0 45px rgba(212, 255, 0, 0.3);
+    animation: splash-flicker 3s ease-in-out infinite;
   }
 
   .splash-ring {
-    @apply absolute h-[360px] w-[360px] rounded-full border border-cyan/20;
+    @apply absolute h-[400px] w-[400px] rounded-full border border-neon/10;
     box-shadow:
-      0 0 45px rgba(0, 234, 255, 0.16),
-      inset 0 0 45px rgba(212, 255, 0, 0.08);
-    animation: splash-pulse 2.4s ease-in-out infinite;
+      0 0 60px rgba(0, 234, 255, 0.1),
+      inset 0 0 60px rgba(212, 255, 0, 0.05);
+    animation: splash-pulse 2.8s ease-in-out infinite;
   }
 }
 
 @keyframes splash-pulse {
   0%,
   100% {
-    transform: translateZ(0) scale(0.98);
-    opacity: 0.65;
+    transform: translateZ(0) scale(0.96);
+    opacity: 0.4;
   }
 
   50% {
-    transform: translateZ(0) scale(1.04);
-    opacity: 1;
+    transform: translateZ(0) scale(1.06);
+    opacity: 0.9;
   }
 }
 
 @keyframes splash-flicker {
   0%,
-  18%,
-  22%,
-  52%,
-  56%,
+  15%,
+  25%,
+  55%,
+  65%,
   100% {
     opacity: 1;
+    transform: scale(1);
   }
 
   20%,
-  54% {
-    opacity: 0.86;
+  60% {
+    opacity: 0.92;
+    transform: scale(0.995);
   }
 }

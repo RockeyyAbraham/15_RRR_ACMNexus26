@@ -7,7 +7,14 @@ type DetectionFeedProps = {
 export default function DetectionFeed({ items }: DetectionFeedProps) {
   return (
     <div className="glass-card p-4">
-      <div className="space-y-3">
+      {items.length === 0 ? (
+        <div className="rounded-3xl border border-white/5 bg-slate-950/40 px-6 py-12 text-center shadow-inner">
+          <div className="font-display text-[10px] font-bold uppercase tracking-[0.3em] text-muted/40">
+            Waiting for live telemetry...
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
         {items.map((item) => (
           <div
             key={item.id}
@@ -27,7 +34,8 @@ export default function DetectionFeed({ items }: DetectionFeedProps) {
             <div className="mt-2 text-sm text-muted">{item.streamUrl}</div>
           </div>
         ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

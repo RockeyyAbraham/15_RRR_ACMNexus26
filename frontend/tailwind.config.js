@@ -11,8 +11,9 @@ export default {
                 muted: "#8390a6",
             },
             fontFamily: {
-                display: ["Orbitron", "sans-serif"],
-                body: ["Rajdhani", "sans-serif"],
+                display: ["Outfit", "Orbitron", "sans-serif"],
+                body: ["Inter", "sans-serif"],
+                mono: ["JetBrains Mono", "monospace"],
             },
             boxShadow: {
                 neon: "0 0 28px rgba(212, 255, 0, 0.38)",

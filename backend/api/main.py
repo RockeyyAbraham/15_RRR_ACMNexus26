@@ -95,6 +95,7 @@ matcher = None
 audio_engine = None
 ai_engine = None
 generator = None
+dual_mode_engine = None
 
 engine_init_error = None
 generator_init_error = None
@@ -166,6 +167,16 @@ def get_dmca_generator():
     except Exception as e:
         generator_init_error = str(e)
         raise RuntimeError(f"DMCA generator unavailable: {e}") from e
+
+
+def get_dual_mode_engine():
+    """Lazily initialize the dual-mode engine for piracy benchmark analytics."""
+    global dual_mode_engine
+    if dual_mode_engine is None:
+        from engines.dual_engine import DualModeEngine
+
+        dual_mode_engine = DualModeEngine()
+    return dual_mode_engine
 
 
 def log_event(event_type: str, **payload):
@@ -628,6 +639,42 @@ def process_suspect_video(video_path: Path, stream_url: str, progress_cb=None, c
     }
 
 
+def process_piracy_benchmark(video_path: Path, title: str, league: str, progress_cb=None, cancel_cb=None):
+    """Run protected ingest + 17 piracy-variant analytics as a main API workflow."""
+    if progress_cb:
+        progress_cb("processing_protected")
+
+    protected_result = process_protected_video(
+        video_path=video_path,
+        title=title,
+        league=league,
+        progress_cb=progress_cb,
+        cancel_cb=cancel_cb,
+    )
+
+    if cancel_cb and cancel_cb():
+        raise RuntimeError("Job cancelled")
+
+    from utils.piracy_benchmark import run_piracy_benchmark
+
+    benchmark_dir = TEMP_DIR / "benchmarks" / f"bench_{uuid.uuid4().hex[:10]}"
+    benchmark_dir.mkdir(parents=True, exist_ok=True)
+
+    benchmark_result = run_piracy_benchmark(
+        original_video=video_path,
+        output_dir=benchmark_dir,
+        dual_engine=get_dual_mode_engine(),
+        progress_cb=progress_cb,
+        cancel_cb=cancel_cb,
+    )
+
+    return {
+        "message": "Piracy benchmark completed",
+        "protected": protected_result,
+        **benchmark_result,
+    }
+
+
 def submit_background_job(job_id: str, job_type: str, video_path: Path, payload: dict):
     job = get_job(job_id)
     if not job or job.get("status") == "cancelled":
@@ -676,6 +723,14 @@ def submit_background_job(job_id: str, job_type: str, video_path: Path, payload:
                             media_path.unlink()
                     except Exception:
                         pass
+        elif job_type == "piracy_benchmark":
+            result = process_piracy_benchmark(
+                video_path=video_path,
+                title=payload.get("title", "Protected Benchmark Content"),
+                league=payload.get("league", "Benchmark League"),
+                progress_cb=lambda s: update_job(job_id, stage=s),
+                cancel_cb=lambda: should_abort(job_id),
+            )
         else:
             raise ValueError(f"Unsupported job type: {job_type}")
 
@@ -816,6 +871,34 @@ def upload_suspect_async():
         update_candidate_record(candidate_id, status="verifying", verification_job_id=job_id)
 
     return jsonify({"job_id": job_id, "status": "queued", "job_type": "suspect_upload"}), 202
+
+
+@app.route("/analysis/piracy-benchmark/async", methods=["POST"])
+def run_piracy_benchmark_async():
+    """Main-project API: process protected video and evaluate 17 generated piracy variants."""
+    if get_active_job_count() >= MAX_QUEUE_SIZE:
+        return jsonify({"error": "Async queue is full. Try again shortly."}), 429
+
+    if "video" not in request.files:
+        return jsonify({"error": "No video file provided"}), 400
+
+    video_file = request.files["video"]
+    if video_file.filename == "":
+        return jsonify({"error": "No selected file"}), 400
+
+    video_path = TEMP_DIR / f"{uuid.uuid4()}_{video_file.filename}"
+    video_file.save(video_path)
+
+    payload = {
+        "title": request.form.get("title", Path(video_file.filename).stem),
+        "league": request.form.get("league", "BENCHMARK"),
+        "filename": video_file.filename,
+    }
+
+    job_id = create_job("piracy_benchmark", payload)
+    executor.submit(submit_background_job, job_id, "piracy_benchmark", video_path, payload)
+
+    return jsonify({"job_id": job_id, "status": "queued", "job_type": "piracy_benchmark"}), 202
 
 
 @app.route("/jobs/<job_id>", methods=["GET"])

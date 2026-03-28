@@ -7,8 +7,8 @@ export default function AppLayout() {
   const location = useLocation();
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-abyss text-ink">
-      <div className="pointer-events-none absolute inset-0 scanline-overlay opacity-30" />
+    <div className="relative min-h-screen overflow-hidden bg-abyss font-body text-ink">
+      <div className="pointer-events-none absolute inset-0 scanline-overlay opacity-5" />
       <div className="relative z-10 grid min-h-screen lg:grid-cols-[280px_1fr]">
         <div className="hidden lg:block">
           <Sidebar />

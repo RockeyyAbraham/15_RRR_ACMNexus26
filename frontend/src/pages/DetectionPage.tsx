@@ -2,41 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import ChartPanel from "../components/ChartPanel";
 import DetectionFeed from "../components/DetectionFeed";
 import StatCard from "../components/StatCard";
-import { fetchDetections, getLiveSocketUrl } from "../services/api";
-import type { DetectionApiItem, DetectionFeedItem, LivePayload } from "../types";
-
-const fallbackDetections: DetectionFeedItem[] = [
-  {
-    id: 1,
-    matchId: "MATCH #1247",
-    platform: "TWITCH",
-    timestamp: "14:23:17 UTC",
-    confidence: 92.3,
-    hashPreview: "8F2A...91E2",
-    league: "EURO_PREMIER_CHAMPIONSHIP",
-    streamUrl: "twitch.tv/piratesports123",
-  },
-  {
-    id: 2,
-    matchId: "MATCH #1246",
-    platform: "KICK",
-    timestamp: "14:22:04 UTC",
-    confidence: 88.1,
-    hashPreview: "3C1B...44D0",
-    league: "EURO_PREMIER_CHAMPIONSHIP",
-    streamUrl: "kick.com/mirrorstream",
-  },
-  {
-    id: 3,
-    matchId: "MATCH #1245",
-    platform: "YOUTUBE",
-    timestamp: "14:19:55 UTC",
-    confidence: 94.7,
-    hashPreview: "7E9D...01FF",
-    league: "EURO_PREMIER_CHAMPIONSHIP",
-    streamUrl: "youtube.com/live/watchcopy",
-  },
-];
+import { fetchDetections, fetchHealth, fetchMetricsSummary, getLiveSocketUrl } from "../services/api";
+import type { DetectionApiItem, DetectionFeedItem, HealthApi, LivePayload, MetricsSummaryApi } from "../types";
 
 function extractPlatform(streamUrl: string) {
   try {
@@ -64,8 +31,10 @@ function formatDetection(item: DetectionApiItem): DetectionFeedItem {
 }
 
 export default function DetectionPage() {
-  const [detections, setDetections] = useState<DetectionFeedItem[]>(fallbackDetections);
+  const [detections, setDetections] = useState<DetectionFeedItem[]>([]);
   const [socketLive, setSocketLive] = useState(false);
+  const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
+  const [health, setHealth] = useState<HealthApi | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -77,6 +46,18 @@ export default function DetectionPage() {
         }
       })
       .catch(() => undefined);
+
+    fetchMetricsSummary().then((data) => {
+      if (mounted) {
+        setSummary(data);
+      }
+    });
+
+    fetchHealth().then((data) => {
+      if (mounted) {
+        setHealth(data);
+      }
+    });
 
     const socket = new WebSocket(getLiveSocketUrl());
 
@@ -137,17 +118,17 @@ export default function DetectionPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="section-shell">
-        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="panel-title">Threat Surveillance</div>
-            <h1 className="panel-heading mt-3">Detection Feed</h1>
-            <div className="mt-3 max-w-2xl text-sm text-slate-300">
-              Watch the active piracy stream ledger, confidence shifts, and live feed updates coming back from the Sentinel detection layer.
+            <div className="panel-title mb-2">Threat Surveillance</div>
+            <h1 className="panel-heading">Detection Feed</h1>
+            <div className="mt-4 max-w-2xl text-[13px] font-medium leading-relaxed tracking-wide text-slate-400">
+              Watch the active piracy stream ledger, confidence shifts, and live feed updates coming back from the Sentinel detection layer in real-time.
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-3">
             <span className="data-chip">Realtime Feed</span>
             <span className="data-chip">Confidence Sync</span>
             <span className="data-chip">Live WebSocket</span>
@@ -155,50 +136,85 @@ export default function DetectionPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_340px]">
-        <div className="space-y-5">
-          <div className="grid gap-4 md:grid-cols-3">
-            <StatCard label="Active Sessions" value="03" hint="/NODE_CLUSTER" accent="neon" />
-            <StatCard label="Encryption Status" value="AES-256" />
-            <StatCard label="Peak Threat Level" value="CRITICAL" accent="danger" />
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,3fr)_360px]">
+        <div className="space-y-8">
+          <div className="grid gap-6 md:grid-cols-3">
+            <StatCard
+              label="Detections Logged"
+              value={String(summary?.detections_count ?? 0)}
+              hint={`Auto action: ${summary?.auto_action_count ?? 0}`}
+              accent="neon"
+            />
+            <StatCard
+              label="Avg Confidence"
+              value={`${(summary?.average_confidence ?? 0).toFixed(1)}%`}
+              hint={`Manual review: ${summary?.manual_review_count ?? 0}`}
+              accent="cyan"
+            />
+            <StatCard
+              label="Peak Threat Level"
+              value={(summary?.auto_action_count ?? 0) > 0 ? "CRITICAL" : "ELEVATED"}
+              accent={(summary?.auto_action_count ?? 0) > 0 ? "danger" : "default"}
+            />
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <button type="button" className="subtle-button" onClick={exportCsv}>
+          <div className="flex flex-wrap items-center gap-4">
+            <button type="button" className="subtle-button px-6" onClick={exportCsv}>
               Export CSV
             </button>
-            <button type="button" className="subtle-button" onClick={() => setDetections([])}>
+            <button type="button" className="subtle-button px-6" onClick={() => setDetections([])}>
               Clear Log
             </button>
             <div
-              className={[
-                "rounded-full border px-4 py-3 font-display text-xs uppercase tracking-[0.22em]",
+              className={`flex items-center gap-3 rounded-full border px-5 py-2.5 font-display text-[10px] font-bold uppercase tracking-widest transition-all duration-300 ${
                 socketLive
-                  ? "border-neon/50 bg-neon/10 text-neon shadow-neon"
-                  : "border-rose-500/30 bg-rose-500/10 text-rose-200",
-              ].join(" ")}
+                  ? "border-neon/20 bg-neon/5 text-neon shadow-[0_0_15px_rgba(212,255,0,0.1)]"
+                  : "border-rose-500/20 bg-rose-500/5 text-rose-300"
+              }`}
             >
-              {socketLive ? "WebSocket Live" : "WebSocket Offline"}
+              <span className={`h-1.5 w-1.5 rounded-full ${socketLive ? 'bg-neon animate-pulse shadow-[0_0_8px_rgba(212,255,0,0.6)]' : 'bg-rose-500'}`} />
+              {socketLive ? "WebSocket Active" : "WebSocket Offline"}
             </div>
           </div>
 
           <DetectionFeed items={detections} />
         </div>
 
-        <div className="space-y-4">
-          <StatCard label="Total Protected Hashes" value="14,209" accent="neon" />
-          <StatCard label="System Sync Status" value="STABLE" />
+        <div className="space-y-6">
+          <StatCard
+            label="Protected Hash Mesh"
+            value={String(summary?.protected_content_count ?? 0)}
+            accent="neon"
+          />
+          <StatCard 
+            label="System Health" 
+            value={(health?.status ?? "offline").toUpperCase()} 
+            accent={health?.status === 'online' ? 'cyan' : 'default'}
+          />
           <ChartPanel
-            title="Threat Confidence History"
+            title="Search Confidence Flow"
             data={chartData.length > 0 ? chartData : [{ label: "00", value: 0 }]}
           />
-          <div className="glass-card p-4">
-            <div className="font-display text-xs uppercase tracking-[0.28em] text-neon">Global Traffic Monitor</div>
-            <div className="mt-3 text-sm text-slate-300">
-              Cross-referencing 4.2M packets/sec against known fingerprint signatures.
+          <div className="glass-card p-8">
+            <div className="font-display text-[9px] font-bold uppercase tracking-[0.3em] text-muted/60 mb-6">Network Telemetry</div>
+            <div className="space-y-6">
+              <div>
+                <div className="font-display text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 mb-2">Active Nodes</div>
+                <div className="flex flex-wrap gap-2">
+                  {health?.engines?.map(engine => (
+                    <span key={engine} className="rounded-md border border-white/5 bg-white/[0.02] px-2 py-1 text-[10px] font-bold text-cyan">
+                      {engine}
+                    </span>
+                  )) ?? <span className="text-[10px] font-bold text-slate-600">NO NODES ONLINE</span>}
+                </div>
+              </div>
+              <div className="flex items-center justify-between border-t border-white/5 pt-6">
+                <span className="font-display text-[9px] font-bold uppercase tracking-[0.2em] text-muted/50 text-white/40">Latest Sync</span>
+                <span className="font-mono text-[10px] font-bold text-slate-500">
+                  {health?.timestamp ? new Date(health.timestamp).toLocaleTimeString() : "--:--:--"}
+                </span>
+              </div>
             </div>
-            <div className="mt-4 font-display text-sm uppercase tracking-[0.22em] text-cyan">Latency: 12ms</div>
-            <div className="mt-1 font-display text-sm uppercase tracking-[0.22em] text-neon">Uptime: 99.98%</div>
           </div>
         </div>
       </div>

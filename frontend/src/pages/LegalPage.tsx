@@ -1,25 +1,127 @@
-import { getDmcaDownloadUrl } from "../services/api";
+import { useEffect, useMemo, useState } from "react";
+import { fetchDetections, fetchMetricsSummary, getDmcaDownloadUrl, submitCandidate } from "../services/api";
+import type { DetectionApiItem, MetricsSummaryApi } from "../types";
 
-const fallbackNotices = [
-  { id: 1, caseId: "CASE_001", platform: "YouTube", status: "Under Review", priority: "High" },
-  { id: 2, caseId: "CASE_002", platform: "Twitch", status: "Action Required", priority: "Critical" },
-  { id: 3, caseId: "CASE_003", platform: "Kick", status: "Pending", priority: "High" },
-  { id: 4, caseId: "CASE_004", platform: "Facebook", status: "Resolved", priority: "Medium" },
-];
+function extractPlatform(streamUrl: string) {
+  try {
+    return new URL(streamUrl.startsWith("http") ? streamUrl : `https://${streamUrl}`).hostname
+      .replace("www.", "")
+      .split(".")[0]
+      .toUpperCase();
+  } catch {
+    return "UNKNOWN";
+  }
+}
 
 export default function LegalPage() {
+  const [detections, setDetections] = useState<DetectionApiItem[]>([]);
+  const [summary, setSummary] = useState<MetricsSummaryApi | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  const loadPageData = async () => {
+    const [detectionItems, summaryData] = await Promise.all([fetchDetections(), fetchMetricsSummary()]);
+    setDetections(detectionItems);
+    setSummary(summaryData);
+  };
+
+  useEffect(() => {
+    loadPageData();
+  }, []);
+
+  const legalNotices = useMemo(
+    () =>
+      detections.slice(0, 20).map((detection) => {
+        const confidence = detection.confidence_score ?? 0;
+        const status = detection.dmca_generated
+          ? "Notice Generated"
+          : confidence >= 85
+            ? "Action Required"
+            : "Under Review";
+        const priority = confidence >= 90 ? "Critical" : confidence >= 80 ? "High" : "Medium";
+        return {
+          id: detection.id,
+          caseId: `CASE_${String(detection.id).padStart(4, "0")}`,
+          platform: extractPlatform(detection.stream_url),
+          status,
+          priority,
+        };
+      }),
+    [detections],
+  );
+
+  const successRate = useMemo(() => {
+    const total = summary?.detections_count ?? 0;
+    if (!total) {
+      return "0.0%";
+    }
+    const ratio = ((summary?.auto_action_count ?? 0) / total) * 100;
+    return `${ratio.toFixed(1)}%`;
+  }, [summary]);
+
+  const handleNewCase = async () => {
+    const rawUrl = window.prompt("Enter stream URL for new case:", "https://");
+    if (!rawUrl) {
+      return;
+    }
+
+    const url = rawUrl.trim();
+    if (!url) {
+      return;
+    }
+
+    try {
+      const platform = extractPlatform(url).toLowerCase();
+      const result = await submitCandidate({
+        url,
+        platform,
+        eventContext: "Manual legal escalation",
+      });
+      setActionMessage(`New case queued: ${result.candidate_id}`);
+      await loadPageData();
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Failed to create case");
+    }
+  };
+
+  const handleExportReport = () => {
+    const header = "Case ID,Platform,Status,Priority,Detection ID";
+    const rows = legalNotices.map((notice) =>
+      [notice.caseId, notice.platform, notice.status, notice.priority, String(notice.id)]
+        .map((value) => `\"${String(value).replace(/\"/g, '\"\"')}\"`)
+        .join(","),
+    );
+
+    const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "sentinel_legal_report.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+    setActionMessage("Legal report exported");
+  };
+
+  const handleBulkAction = () => {
+    const prioritized = legalNotices.filter((item) => item.priority === "Critical" || item.priority === "High");
+    const selected = (prioritized.length > 0 ? prioritized : legalNotices).slice(0, 5);
+    selected.forEach((item) => {
+      window.open(getDmcaDownloadUrl(item.id), "_blank", "noopener,noreferrer");
+    });
+    setActionMessage(`Opened ${selected.length} DMCA notice tabs`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="section-shell">
-        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="panel-title">Compliance Command</div>
-            <h1 className="panel-heading mt-3">Legal Enforcement</h1>
-            <div className="mt-3 max-w-2xl text-sm text-slate-300">
-              Queue notices for review, package infringement evidence, and move takedown actions through the Sentinel compliance lane.
+            <div className="panel-title mb-2">Compliance Command</div>
+            <h1 className="panel-heading">Legal Enforcement</h1>
+            <div className="mt-4 max-w-2xl text-[13px] font-medium leading-relaxed tracking-wide text-slate-400">
+              Queue notices for review, package infringement evidence, and move takedown actions through the Sentinel compliance lane with full chain-of-custody.
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-3">
             <span className="data-chip">Review Gate</span>
             <span className="data-chip">DMCA Queue</span>
             <span className="data-chip">Audit Trail</span>
@@ -32,60 +134,102 @@ export default function LegalPage() {
           <div className="rounded-2xl border border-rose-500/25 bg-rose-500/10 px-5 py-4 text-sm text-rose-100">
             DMCA NOTICE GENERATED FOR REVIEW - NOT AUTO-SENT. Legal team approval is required before platform submission.
           </div>
+          {actionMessage ? (
+            <div className="rounded-2xl border border-neon/20 bg-neon/10 px-5 py-3 text-sm text-neon">{actionMessage}</div>
+          ) : null}
 
           <div className="glass-card overflow-hidden">
-            <div className="grid grid-cols-[1.2fr_1fr_1fr_1fr_auto] gap-4 border-b border-white/10 px-5 py-4 font-display text-xs uppercase tracking-[0.22em] text-muted">
-              <div>Case ID</div>
+            <div className="grid grid-cols-[1.4fr_1fr_1.2fr_1fr_auto] gap-4 border-b border-white/5 bg-white/[0.02] px-6 py-5 font-display text-[9px] font-bold uppercase tracking-[0.3em] text-muted/60">
+              <div>Case Reference</div>
               <div>Platform</div>
               <div>Status</div>
               <div>Priority</div>
-              <div>Action</div>
+              <div className="text-right">Action</div>
             </div>
 
-            {fallbackNotices.map((notice) => (
-              <div
-                key={notice.caseId}
-                className="grid grid-cols-[1.2fr_1fr_1fr_1fr_auto] items-center gap-4 border-b border-white/5 px-5 py-4 text-sm text-slate-200 last:border-b-0"
-              >
-                <div className="font-display tracking-[0.12em] text-white">{notice.caseId}</div>
-                <div>{notice.platform}</div>
-                <div>{notice.status}</div>
-                <div>{notice.priority}</div>
-                <a
-                  className="subtle-button inline-flex items-center justify-center"
-                  href={getDmcaDownloadUrl(notice.id)}
+            <div className="divide-y divide-white/5">
+              {legalNotices.map((notice) => (
+                <div
+                  key={notice.caseId}
+                  className="grid grid-cols-[1.4fr_1fr_1.2fr_1fr_auto] items-center gap-4 px-6 py-5 transition-colors hover:bg-white/[0.01]"
                 >
-                  Download
-                </a>
+                  <div className="font-mono text-xs font-medium tracking-tight text-white">{notice.caseId}</div>
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400">{notice.platform}</div>
+                  <div className="flex items-center gap-2 text-[11px] font-bold tracking-wide text-slate-300">
+                    <span className={`h-1.5 w-1.5 rounded-full ${
+                      notice.status.includes('Generated') ? 'bg-cyan shadow-[0_0_8px_rgba(0,234,255,0.4)]' : 
+                      notice.status.includes('Required') ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.4)]' : 'bg-slate-600'
+                    }`} />
+                    {notice.status}
+                  </div>
+                  <div className={`text-[11px] font-bold uppercase tracking-widest ${
+                    notice.priority === 'Critical' ? 'text-rose-400' : 
+                    notice.priority === 'High' ? 'text-amber-400' : 'text-slate-500'
+                  }`}>
+                    {notice.priority}
+                  </div>
+                  <div className="text-right">
+                    <a
+                      className="subtle-button px-4 py-2 text-[10px] uppercase font-bold tracking-widest"
+                      href={getDmcaDownloadUrl(notice.id)}
+                    >
+                      Process
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {legalNotices.length === 0 ? (
+              <div className="px-6 py-12 text-center">
+                <div className="font-display text-[10px] font-bold uppercase tracking-[0.3em] text-muted/30">
+                  No records staged for review
+                </div>
               </div>
-            ))}
+            ) : null}
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <button type="button" className="subtle-button">
+          <div className="flex flex-wrap gap-4 pt-2">
+            <button type="button" className="subtle-button min-w-[140px]" onClick={handleNewCase}>
               New Case
             </button>
-            <button type="button" className="subtle-button">
+            <button type="button" className="subtle-button min-w-[140px]" onClick={handleExportReport}>
               Export Report
             </button>
-            <button type="button" className="subtle-button">
+            <button
+              type="button"
+              className="subtle-button min-w-[140px]"
+              onClick={handleBulkAction}
+              disabled={legalNotices.length === 0}
+            >
               Bulk Action
             </button>
           </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="glass-card p-5">
-            <div className="font-display text-xs uppercase tracking-[0.28em] text-muted">Active Cases</div>
-            <div className="mt-3 font-display text-5xl tracking-[0.04em] text-neon">47</div>
+        <div className="space-y-6">
+          <div className="glass-card p-8 border-white/5 bg-white/[0.02]">
+            <div className="font-display text-[10px] font-bold uppercase tracking-[0.35em] text-muted/40 mb-5">Command Stats</div>
+            <div className="space-y-8">
+              <div>
+                <div className="font-display text-[9px] font-bold uppercase tracking-[0.2em] text-muted/60 mb-1">Active Cases</div>
+                <div className="font-display text-4xl font-extrabold tracking-tighter text-neon">{summary?.detections_count ?? 0}</div>
+              </div>
+              <div>
+                <div className="font-display text-[9px] font-bold uppercase tracking-[0.2em] text-muted/60 mb-1">Resolved MTD</div>
+                <div className="font-display text-4xl font-extrabold tracking-tighter text-white">{summary?.auto_action_count ?? 0}</div>
+              </div>
+              <div>
+                <div className="font-display text-[9px] font-bold uppercase tracking-[0.2em] text-muted/60 mb-1">Success Matrix</div>
+                <div className="font-display text-4xl font-extrabold tracking-tighter text-cyan">{successRate}</div>
+              </div>
+            </div>
           </div>
-          <div className="glass-card p-5">
-            <div className="font-display text-xs uppercase tracking-[0.28em] text-muted">Resolved This Month</div>
-            <div className="mt-3 font-display text-5xl tracking-[0.04em] text-white">128</div>
-          </div>
-          <div className="glass-card p-5">
-            <div className="font-display text-xs uppercase tracking-[0.28em] text-muted">Success Rate</div>
-            <div className="mt-3 font-display text-5xl tracking-[0.04em] text-cyan">96.2%</div>
+          
+          <div className="glass-card p-6 border-white/5 bg-white/[0.02]">
+            <div className="font-display text-[9px] font-bold uppercase tracking-[0.3em] text-muted/60 mb-4">Chain of Custody</div>
+            <div className="text-[11px] font-medium leading-relaxed text-slate-500">
+              All legal actions are logged to the immutable forensic ledger with timestamped operator signatures.
+            </div>
           </div>
         </div>
       </div>
