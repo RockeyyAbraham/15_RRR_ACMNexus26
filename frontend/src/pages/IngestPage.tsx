@@ -250,11 +250,18 @@ export default function IngestPage() {
 
                 <button
                   type="button"
-                  className="subtle-button w-full"
+                  className="subtle-button w-full flex items-center justify-center gap-3 py-4 text-[10px] font-bold uppercase tracking-[0.2em]"
                   onClick={handleRunBenchmark}
                   disabled={loading || benchmarkLoading}
                 >
-                  {benchmarkLoading ? "Running 17-Variant Benchmark..." : "Run 17-Variant Piracy Benchmark"}
+                  {benchmarkLoading ? (
+                    <>
+                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                      Benchmarking 17-Variants...
+                    </>
+                  ) : (
+                    "Execute Piracy Benchmark"
+                  )}
                 </button>
 
                 {message ? (
@@ -347,23 +354,28 @@ export default function IngestPage() {
             </div>
           </div>
           {benchmarkResult ? (
-            <div className="glass-card p-6">
-              <div className="font-display text-[9px] font-bold uppercase tracking-[0.3em] text-muted/60 mb-4">
-                Piracy Benchmark Analytics
+            <div className="glass-card p-8 border-white/5 bg-white/[0.02]">
+              <div className="font-display text-[10px] font-bold uppercase tracking-[0.35em] text-muted/40 mb-5">
+                Benchmark Stats
               </div>
-              <div className="space-y-3 text-[11px] font-bold uppercase tracking-widest text-slate-300">
-                <div className="flex items-center justify-between">
-                  <span>Detected Variants</span>
-                  <span className="text-neon">
-                    {benchmarkResult.detected_count}/{benchmarkResult.variant_count}
-                  </span>
+              <div className="space-y-8">
+                <div>
+                  <div className="font-display text-[9px] font-bold uppercase tracking-[0.2em] text-muted/60 mb-1">Detected Variants</div>
+                  <div className="font-display text-4xl font-extrabold tracking-tighter text-neon">
+                    {benchmarkResult.detected_count}<span className="text-xl text-muted/30 mx-1">/</span>{benchmarkResult.variant_count}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span>Detection Rate</span>
-                  <span className="text-cyan">{benchmarkResult.detection_rate.toFixed(2)}%</span>
+                <div>
+                  <div className="font-display text-[9px] font-bold uppercase tracking-[0.2em] text-muted/60 mb-1">Detection Rate</div>
+                  <div className="font-display text-4xl font-extrabold tracking-tighter text-cyan">
+                    {benchmarkResult.detection_rate.toFixed(1)}<span className="text-xl">%</span>
+                  </div>
                 </div>
-                <div className="text-[10px] text-slate-400 normal-case tracking-normal pt-2">
-                  Results saved at: {benchmarkResult.output_dir}
+                <div className="pt-4 border-t border-white/5">
+                  <div className="font-display text-[9px] font-bold uppercase tracking-[0.2em] text-muted/60 mb-2">Output Directory</div>
+                  <div className="font-mono text-[10px] text-slate-500 break-all leading-relaxed">
+                    {benchmarkResult.output_dir}
+                  </div>
                 </div>
               </div>
             </div>
@@ -373,67 +385,61 @@ export default function IngestPage() {
 
       {benchmarkResult ? (
         <div className="glass-card overflow-hidden">
-          <div className="border-b border-white/5 bg-white/[0.02] px-6 py-5 md:px-8">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="border-b border-white/5 bg-white/[0.02] px-8 py-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <div className="font-display text-[9px] font-bold uppercase tracking-[0.3em] text-muted/60">
-                  Variant Forensics
-                </div>
-                <div className="mt-2 font-display text-lg font-extrabold tracking-tight text-white">
-                  17-Variant Detection Breakdown
-                </div>
+                <div className="font-display text-[10px] font-bold uppercase tracking-[0.35em] text-muted/40 mb-2">Variant Forensics</div>
+                <div className="font-display text-2xl font-extrabold tracking-tight text-white">17-Variant Detection Matrix</div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <span className="data-chip">Detected {benchmarkResult.detected_count}/{benchmarkResult.variant_count}</span>
-                <span className="data-chip">Rate {benchmarkResult.detection_rate.toFixed(2)}%</span>
+                <span className="data-chip">Coverage {benchmarkResult.detection_rate.toFixed(1)}%</span>
+                <span className="data-chip">Active Stream Nodes</span>
               </div>
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse">
+            <table className="min-w-full border-separate border-spacing-0">
               <thead>
                 <tr className="border-b border-white/5 bg-slate-950/40 text-left">
-                  <th className="px-6 py-4 font-display text-[9px] font-bold uppercase tracking-[0.28em] text-muted/60">Variant</th>
-                  <th className="px-6 py-4 font-display text-[9px] font-bold uppercase tracking-[0.28em] text-muted/60">Issue</th>
-                  <th className="px-6 py-4 font-display text-[9px] font-bold uppercase tracking-[0.28em] text-muted/60">Video</th>
-                  <th className="px-6 py-4 font-display text-[9px] font-bold uppercase tracking-[0.28em] text-muted/60">Audio</th>
-                  <th className="px-6 py-4 font-display text-[9px] font-bold uppercase tracking-[0.28em] text-muted/60">Combined</th>
-                  <th className="px-6 py-4 font-display text-[9px] font-bold uppercase tracking-[0.28em] text-muted/60">Threshold</th>
-                  <th className="px-6 py-4 font-display text-[9px] font-bold uppercase tracking-[0.28em] text-muted/60">Decision</th>
-                  <th className="px-6 py-4 font-display text-[9px] font-bold uppercase tracking-[0.28em] text-muted/60">Status</th>
+                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60">Variant & Signature</th>
+                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60 text-center">Video</th>
+                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60 text-center">Audio</th>
+                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60 text-center">Combined</th>
+                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60 text-center">Adaptive Thresh</th>
+                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60">Decision Status</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-white/5">
                 {sortedBenchmarkVariants.map((variant) => (
-                  <tr key={variant.filename} className="border-b border-white/5 text-[12px] text-slate-300 transition-colors hover:bg-white/[0.02]">
-                    <td className="px-6 py-4">
-                      <div className="font-display text-[10px] font-bold uppercase tracking-[0.14em] text-white">
-                        {variant.description}
+                  <tr key={variant.filename} className="group transition-colors hover:bg-white/[0.01]">
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-3">
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-700 group-hover:bg-cyan transition-colors" />
+                        <div>
+                          <div className="font-display text-[11px] font-extrabold uppercase tracking-widest text-white">{variant.description}</div>
+                          <div className="mt-1 font-mono text-[10px] text-slate-500">{variant.filename}</div>
+                        </div>
                       </div>
-                      <div className="mt-1 font-mono text-[10px] text-slate-500">{variant.filename}</div>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-300">
-                        {variant.issue_type.replace(/_/g, " ")}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-mono text-[11px] text-slate-200">{variant.video_confidence.toFixed(2)}%</td>
-                    <td className="px-6 py-4 font-mono text-[11px] text-slate-200">{variant.audio_confidence.toFixed(2)}%</td>
-                    <td className="px-6 py-4 font-mono text-[11px] font-bold text-neon">{variant.combined_confidence.toFixed(2)}%</td>
-                    <td className="px-6 py-4 font-mono text-[11px] text-cyan">{variant.adaptive_threshold.toFixed(2)}%</td>
-                    <td className="px-6 py-4 text-[11px] text-slate-400">{variant.decision_reason}</td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={[
-                          "inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-widest",
-                          variant.is_detected
-                            ? "border-neon/30 bg-neon/10 text-neon"
-                            : "border-rose-500/30 bg-rose-500/10 text-rose-300",
-                        ].join(" ")}
-                      >
-                        {variant.is_detected ? "Detected" : "Missed"}
-                      </span>
+                    <td className="px-8 py-5 text-center font-mono text-[11px] font-bold text-slate-300">{variant.video_confidence.toFixed(1)}%</td>
+                    <td className="px-8 py-5 text-center font-mono text-[11px] font-bold text-slate-300">{variant.audio_confidence.toFixed(1)}%</td>
+                    <td className="px-8 py-5 text-center font-mono text-[11px] font-bold text-neon">{variant.combined_confidence.toFixed(1)}%</td>
+                    <td className="px-8 py-5 text-center font-mono text-[11px] font-bold text-cyan/70">{variant.adaptive_threshold.toFixed(1)}%</td>
+                    <td className="px-8 py-5">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="text-[11px] font-medium text-slate-500 leading-relaxed max-w-[200px]">
+                          {variant.decision_reason}
+                        </div>
+                        <span className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
+                          variant.is_detected 
+                            ? "border-neon/20 bg-neon/10 text-neon shadow-[0_0_15px_rgba(212,255,0,0.05)]" 
+                            : "border-rose-500/20 bg-rose-500/5 text-rose-300"
+                        }`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${variant.is_detected ? 'bg-neon shadow-[0_0_8px_rgba(212,255,0,0.6)]' : 'bg-rose-500'}`} />
+                          {variant.is_detected ? "Detected" : "Missed"}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -89,6 +89,7 @@ AUTO_ACTION_THRESHOLD = float(os.getenv("AUTO_ACTION_THRESHOLD", "85"))
 MANUAL_REVIEW_THRESHOLD = float(os.getenv("MANUAL_REVIEW_THRESHOLD", "75"))
 MAX_ASYNC_WORKERS = int(os.getenv("MAX_ASYNC_WORKERS", "2"))
 MAX_QUEUE_SIZE = int(os.getenv("MAX_QUEUE_SIZE", "20"))
+FLASK_DEBUG_MODE = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 hash_engine = None
 matcher = None
@@ -1368,4 +1369,4 @@ if __name__ == "__main__":
     logger.info(f"Temp directory: {TEMP_DIR}")
     logger.info(f"Notices directory: {NOTICES_DIR}")
     logger.info("="*80)
-    app.run(debug=True, port=8000)
+    app.run(debug=FLASK_DEBUG_MODE, use_reloader=False, port=8000)
