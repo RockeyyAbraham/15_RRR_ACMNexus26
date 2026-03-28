@@ -20,18 +20,35 @@ export default function EvidencePage() {
 
   useEffect(() => {
     let mounted = true;
-    fetchMetricsSummary().then((data) => {
+    let pollInterval: number | null = null;
+
+    const loadData = async () => {
+      if (!mounted) return;
+
+      const [summaryData, items] = await Promise.all([
+        fetchMetricsSummary().catch(() => null),
+        fetchDetections().catch(() => []),
+      ]);
+
+      if (!mounted) return;
+
+      setSummary(summaryData);
+      setDetections(items);
+    };
+
+    loadData();
+
+    pollInterval = window.setInterval(() => {
       if (mounted) {
-        setSummary(data);
+        loadData();
       }
-    });
-    fetchDetections().then((items) => {
-      if (mounted) {
-        setDetections(items);
-      }
-    });
+    }, 5000);
+
     return () => {
       mounted = false;
+      if (pollInterval !== null) {
+        window.clearInterval(pollInterval);
+      }
     };
   }, []);
 

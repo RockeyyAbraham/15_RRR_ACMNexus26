@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 type UploadBoxProps = {
   file: File | null;
@@ -9,7 +9,7 @@ export default function UploadBox({ file, onFileSelect }: UploadBoxProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleFiles = (files: FileList | null) => {
+  const handleFiles = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) {
       return;
     }
@@ -18,7 +18,22 @@ export default function UploadBox({ file, onFileSelect }: UploadBoxProps) {
     if (nextFile.type.startsWith("video/")) {
       onFileSelect(nextFile);
     }
-  };
+  }, [onFileSelect]);
+
+  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+    handleFiles(event.dataTransfer.files);
+  }, [handleFiles]);
 
   return (
     <div
@@ -26,16 +41,9 @@ export default function UploadBox({ file, onFileSelect }: UploadBoxProps) {
         "relative rounded-3xl border border-dashed p-8 transition-all duration-300 backdrop-blur-md",
         isDragging ? "border-neon bg-neon/10 shadow-[0_0_30px_rgba(212,255,0,0.1)]" : "border-white/10 bg-slate-950/40 hover:border-white/20",
       ].join(" ")}
-      onDragOver={(event) => {
-        event.preventDefault();
-        setIsDragging(true);
-      }}
-      onDragLeave={() => setIsDragging(false)}
-      onDrop={(event) => {
-        event.preventDefault();
-        setIsDragging(false);
-        handleFiles(event.dataTransfer.files);
-      }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
       <input
         ref={inputRef}

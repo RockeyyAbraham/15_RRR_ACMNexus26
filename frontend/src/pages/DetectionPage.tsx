@@ -38,46 +38,76 @@ export default function DetectionPage() {
 
   useEffect(() => {
     let mounted = true;
+    let socket: WebSocket | null = null;
+    let pollInterval: number | null = null;
 
-    fetchDetections()
-      .then((items) => {
-        if (mounted && items.length > 0) {
-          setDetections(items.map(formatDetection));
-        }
-      })
-      .catch(() => undefined);
+    const loadData = async () => {
+      if (!mounted) return;
 
-    fetchMetricsSummary().then((data) => {
-      if (mounted) {
-        setSummary(data);
+      const [items, summaryData, healthData] = await Promise.all([
+        fetchDetections().catch(() => []),
+        fetchMetricsSummary().catch(() => null),
+        fetchHealth().catch(() => null),
+      ]);
+
+      if (!mounted) return;
+
+      if (items.length > 0) {
+        setDetections(items.map(formatDetection));
       }
-    });
-
-    fetchHealth().then((data) => {
-      if (mounted) {
-        setHealth(data);
-      }
-    });
-
-    const socket = new WebSocket(getLiveSocketUrl());
-
-    socket.onopen = () => setSocketLive(true);
-    socket.onclose = () => setSocketLive(false);
-    socket.onerror = () => setSocketLive(false);
-    socket.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data) as LivePayload;
-        if (payload.type === "detections_update" && Array.isArray(payload.data) && payload.data.length > 0) {
-          setDetections(payload.data.map(formatDetection));
-        }
-      } catch {
-        setSocketLive(false);
-      }
+      setSummary(summaryData);
+      setHealth(healthData);
     };
+
+    loadData();
+
+    pollInterval = window.setInterval(() => {
+      if (mounted) {
+        fetchMetricsSummary().then((data) => {
+          if (mounted) setSummary(data);
+        });
+        fetchHealth().then((data) => {
+          if (mounted) setHealth(data);
+        });
+      }
+    }, 5000);
+
+    try {
+      socket = new WebSocket(getLiveSocketUrl());
+
+      socket.onopen = () => {
+        if (mounted) setSocketLive(true);
+      };
+      socket.onclose = () => {
+        if (mounted) setSocketLive(false);
+      };
+      socket.onerror = () => {
+        if (mounted) setSocketLive(false);
+      };
+      socket.onmessage = (event) => {
+        if (!mounted) return;
+        try {
+          const payload = JSON.parse(event.data) as LivePayload;
+          if (payload.type === "detections_update" && Array.isArray(payload.data) && payload.data.length > 0) {
+            setDetections(payload.data.map(formatDetection));
+          }
+        } catch {
+          setSocketLive(false);
+        }
+      };
+    } catch (error) {
+      console.error("WebSocket connection failed:", error);
+      setSocketLive(false);
+    }
 
     return () => {
       mounted = false;
-      socket.close();
+      if (socket) {
+        socket.close();
+      }
+      if (pollInterval !== null) {
+        window.clearInterval(pollInterval);
+      }
     };
   }, []);
 

@@ -41,21 +41,23 @@ export default function IngestPage() {
 
   useEffect(() => {
     let mounted = true;
+    let pollInterval: number | null = null;
 
-    fetchMetricsSummary().then((data) => {
-      if (mounted) {
-        setSummary(data);
-      }
-    });
+    const loadData = async () => {
+      if (!mounted) return;
 
-    fetchHealth().then((data) => {
-      if (mounted) {
-        setHealth(data);
-      }
-    });
+      const [summaryData, healthData, items] = await Promise.all([
+        fetchMetricsSummary().catch(() => null),
+        fetchHealth().catch(() => null),
+        fetchDetections().catch(() => []),
+      ]);
 
-    fetchDetections().then((items) => {
-      if (mounted) {
+      if (!mounted) return;
+
+      setSummary(summaryData);
+      setHealth(healthData);
+
+      if (items.length > 0) {
         const trend = items
           .slice(0, 7)
           .reverse()
@@ -65,10 +67,26 @@ export default function IngestPage() {
           }));
         setRecentConfidence(trend);
       }
-    });
+    };
+
+    loadData();
+
+    pollInterval = window.setInterval(() => {
+      if (mounted) {
+        fetchMetricsSummary().then((data) => {
+          if (mounted) setSummary(data);
+        });
+        fetchHealth().then((data) => {
+          if (mounted) setHealth(data);
+        });
+      }
+    }, 5000);
 
     return () => {
       mounted = false;
+      if (pollInterval !== null) {
+        window.clearInterval(pollInterval);
+      }
     };
   }, []);
 
@@ -109,7 +127,7 @@ export default function IngestPage() {
     setJobStage("queued");
     setProgress({ video: 28, audio: 12 });
 
-    let interval: number | undefined;
+    let interval: number | null = null;
 
     try {
       interval = window.setInterval(() => {
@@ -141,7 +159,7 @@ export default function IngestPage() {
       setError("Fingerprint generation failed. Verify the Flask backend is online.");
       setProgress({ video: 0, audio: 0 });
     } finally {
-      if (interval) {
+      if (interval !== null) {
         window.clearInterval(interval);
       }
       setJobStage(null);
