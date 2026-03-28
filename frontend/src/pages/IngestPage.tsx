@@ -27,6 +27,16 @@ export default function IngestPage() {
         : [],
     [benchmarkResult],
   );
+  const benchmarkAverageConfidence = useMemo(() => {
+    if (!benchmarkResult || benchmarkResult.variants.length === 0) {
+      return 0;
+    }
+    const totalConfidence = benchmarkResult.variants.reduce(
+      (sum, variant) => sum + variant.combined_confidence,
+      0,
+    );
+    return totalConfidence / benchmarkResult.variants.length;
+  }, [benchmarkResult]);
 
   useEffect(() => {
     let mounted = true;
@@ -386,15 +396,11 @@ export default function IngestPage() {
       {benchmarkResult ? (
         <div className="glass-card overflow-hidden">
           <div className="border-b border-white/5 bg-white/[0.02] px-8 py-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="font-display text-[10px] font-bold uppercase tracking-[0.35em] text-muted/40 mb-2">Variant Forensics</div>
-                <div className="font-display text-2xl font-extrabold tracking-tight text-white">17-Variant Detection Matrix</div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <span className="data-chip">Coverage {benchmarkResult.detection_rate.toFixed(1)}%</span>
-                <span className="data-chip">Active Stream Nodes</span>
-              </div>
+            <div className="font-display text-[10px] font-bold uppercase tracking-[0.35em] text-muted/40 mb-2">
+              Final Report - Sentinel Benchmark
+            </div>
+            <div className="font-display text-2xl font-extrabold tracking-tight text-white">
+              Piracy Detection Results
             </div>
           </div>
 
@@ -402,49 +408,57 @@ export default function IngestPage() {
             <table className="min-w-full border-separate border-spacing-0">
               <thead>
                 <tr className="border-b border-white/5 bg-slate-950/40 text-left">
-                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60">Variant & Signature</th>
-                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60 text-center">Video</th>
-                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60 text-center">Audio</th>
-                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60 text-center">Combined</th>
-                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60 text-center">Adaptive Thresh</th>
-                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60">Decision Status</th>
+                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60">Type</th>
+                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60 text-center">Confidence</th>
+                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60 text-center">Consistency</th>
+                  <th className="px-8 py-5 font-display text-[9px] font-bold uppercase tracking-[0.35em] text-muted/60">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {sortedBenchmarkVariants.map((variant) => (
                   <tr key={variant.filename} className="group transition-colors hover:bg-white/[0.01]">
-                    <td className="px-8 py-5">
-                      <div className="flex items-center gap-3">
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-700 group-hover:bg-cyan transition-colors" />
-                        <div>
-                          <div className="font-display text-[11px] font-extrabold uppercase tracking-widest text-white">{variant.description}</div>
-                          <div className="mt-1 font-mono text-[10px] text-slate-500">{variant.filename}</div>
-                        </div>
-                      </div>
+                    <td className="px-8 py-5 font-display text-[11px] font-bold uppercase tracking-[0.12em] text-white">
+                      {variant.description}
                     </td>
-                    <td className="px-8 py-5 text-center font-mono text-[11px] font-bold text-slate-300">{variant.video_confidence.toFixed(1)}%</td>
-                    <td className="px-8 py-5 text-center font-mono text-[11px] font-bold text-slate-300">{variant.audio_confidence.toFixed(1)}%</td>
-                    <td className="px-8 py-5 text-center font-mono text-[11px] font-bold text-neon">{variant.combined_confidence.toFixed(1)}%</td>
-                    <td className="px-8 py-5 text-center font-mono text-[11px] font-bold text-cyan/70">{variant.adaptive_threshold.toFixed(1)}%</td>
+                    <td className="px-8 py-5 text-center font-mono text-[11px] font-bold text-neon">
+                      {variant.combined_confidence.toFixed(2)}%
+                    </td>
+                    <td className="px-8 py-5 text-center font-mono text-[11px] font-bold text-cyan/80">
+                      {typeof variant.consistency_ratio === "number"
+                        ? `${(variant.consistency_ratio * 100).toFixed(1)}%`
+                        : "-"}
+                    </td>
                     <td className="px-8 py-5">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="text-[11px] font-medium text-slate-500 leading-relaxed max-w-[200px]">
-                          {variant.decision_reason}
-                        </div>
-                        <span className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
-                          variant.is_detected 
-                            ? "border-neon/20 bg-neon/10 text-neon shadow-[0_0_15px_rgba(212,255,0,0.05)]" 
-                            : "border-rose-500/20 bg-rose-500/5 text-rose-300"
-                        }`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${variant.is_detected ? 'bg-neon shadow-[0_0_8px_rgba(212,255,0,0.6)]' : 'bg-rose-500'}`} />
-                          {variant.is_detected ? "Detected" : "Missed"}
-                        </span>
-                      </div>
+                      <span
+                        className={[
+                          "inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest",
+                          variant.is_detected
+                            ? "border-neon/20 bg-neon/10 text-neon"
+                            : "border-rose-500/20 bg-rose-500/5 text-rose-300",
+                        ].join(" ")}
+                      >
+                        <span
+                          className={[
+                            "h-1.5 w-1.5 rounded-full",
+                            variant.is_detected ? "bg-neon" : "bg-rose-500",
+                          ].join(" ")}
+                        />
+                        {variant.is_detected ? "Detected" : "Missed"}
+                      </span>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="border-t border-white/5 bg-slate-950/30 px-8 py-5 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-300">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <span>
+                Detection Rate: {benchmarkResult.detected_count}/{benchmarkResult.variant_count} ({benchmarkResult.detection_rate.toFixed(1)}%)
+              </span>
+              <span>Average Confidence: {benchmarkAverageConfidence.toFixed(2)}%</span>
+            </div>
           </div>
         </div>
       ) : null}

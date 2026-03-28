@@ -89,6 +89,7 @@ export type PiracyBenchmarkVariant = {
   video_confidence: number;
   audio_confidence: number;
   combined_confidence: number;
+  consistency_ratio?: number | null;
   pattern_score: number;
   adaptive_threshold: number;
   decision_reason: string;

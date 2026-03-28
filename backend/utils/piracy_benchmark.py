@@ -372,6 +372,8 @@ def run_piracy_benchmark(
             progress_cb(f"analyzing_{variant['filename']}")
 
         result = dual_engine.detect_piracy(str(Path(variant["path"])), str(original_video), mode="dual")
+        video_details = result.get("details", {}).get("video", {}) if isinstance(result.get("details"), dict) else {}
+        consistency_ratio = video_details.get("consistency_ratio")
         analytics.append(
             {
                 "filename": variant["filename"],
@@ -382,6 +384,7 @@ def run_piracy_benchmark(
                 "video_confidence": round(float(result.get("video_confidence", 0.0)), 2),
                 "audio_confidence": round(float(result.get("audio_confidence", 0.0)), 2),
                 "combined_confidence": round(float(result.get("combined_confidence", 0.0)), 2),
+                "consistency_ratio": round(float(consistency_ratio), 4) if isinstance(consistency_ratio, (int, float)) else None,
                 "pattern_score": round(float(result.get("pattern_score", 0.0)), 2),
                 "adaptive_threshold": round(float(result.get("adaptive_threshold", 0.0)), 2),
                 "decision_reason": result.get("decision_reason", "unknown"),
