@@ -1,8 +1,8 @@
 # �️ Sentinel - Real-Time Piracy Detection System
 
-### 🏆 **NEXUS Hackathon 2026 | Digital Asset Protection**
-### 🤝 **Team CLIQUE x ACM MITS**
-### 📅 **March 27-28, 2026**
+### 🏆 NEXUS Hackathon 2026 | Digital Asset Protection
+### 🤝 Team CLIQUE x ACM MITS
+### 📅 March 27-28, 2026
 
 <p align="center">
   <img src="template_acm.png" width="400"/>
@@ -11,13 +11,13 @@
 
 ---
 
-## 🎯 **Mission**
+## 🎯 Mission
 
-Stop the **$28B annual sports piracy crisis** with real-time detection in under 90 seconds.
+Stop the $28B annual sports piracy crisis with real-time detection in under 90 seconds.
 
 ---
 
-## ⚡ **One-Command Demo**
+## ⚡ One-Command Demo
 
 ```bash
 # Windows - Double click or run:
@@ -30,20 +30,20 @@ Backend:  http://localhost:8000
 
 ---
 
-## 🚀 **Key Innovations**
+## 🚀 Key Innovations
 
-### **🔍 Dual-Mode Fingerprinting**
+### 🔍 Dual-Mode Fingerprinting
 - **Video**: pHash + dHash fusion with adaptive sampling
 - **Audio**: Mel-spectrogram hashing
 - **Combined**: 70% video + 30% audio confidence scoring
 
-### **⚡ Real-Time Performance**
+### ⚡ Real-Time Performance
 - **20x speedup** with parallel processing
 - **95% detection accuracy** on real content
 - **<90 second enforcement window**
 - **161 scene changes** detected automatically
 
-### **🤖 AI-Enhanced Legal**
+### 🤖 AI-Enhanced Legal
 - **Groq Llama 3.3 70B** integration
 - **Automated DMCA notice generation**
 - **Natural language detection summaries**
@@ -51,7 +51,7 @@ Backend:  http://localhost:8000
 
 ---
 
-## 📊 **Proven Results**
+## 📊 Proven Results
 
 | Metric | Result |
 |--------|--------|
@@ -64,21 +64,21 @@ Backend:  http://localhost:8000
 
 ---
 
-## 🛠 **Tech Stack**
+## 🛠 Tech Stack
 
-### **Backend**
+### Backend
 - **Flask** REST API with WebSocket support
 - **OpenCV** for video processing
-- **SQLite** + **Redis** for persistence
+- **SQLite** + Redis for persistence
 - **Groq** API for AI integration
 
-### **Frontend**
+### Frontend
 - **React** with TypeScript
 - **Vite** for fast development
 - **TailwindCSS** for modern UI
 - **Real-time WebSocket** updates
 
-### **Core Engines**
+### Core Engines
 - **VideoHashEngine**: Multi-hash fingerprinting
 - **AudioHashEngine**: Audio signature analysis
 - **DualModeEngine**: Combined verification
@@ -86,31 +86,31 @@ Backend:  http://localhost:8000
 
 ---
 
-## 🎯 **Demo Workflow**
+## 🎯 Demo Workflow
 
-### **1. Protected Content Ingest**
+### 1. Protected Content Ingest
 ```bash
 Upload sports video → Auto-fingerprinting → Database storage
 ```
 
-### **2. Piracy Benchmark**
+### 2. Piracy Benchmark
 ```bash
 Generate 17 variants → Test detection accuracy → View results
 ```
 
-### **3. Live Detection**
+### 3. Live Detection
 ```bash
 Monitor streams → Real-time alerts → AI-powered analysis
 ```
 
-### **4. Legal Enforcement**
+### 4. Legal Enforcement
 ```bash
 Auto-generate DMCA → Download PDF → Send to platform
 ```
 
 ---
 
-## 📁 **Project Structure**
+## 📁 Project Structure
 
 ```
 ├── backend/
@@ -127,22 +127,22 @@ Auto-generate DMCA → Download PDF → Send to platform
 
 ---
 
-## � **Testing & Validation**
+## � Testing & Validation
 
-### **Real-World Testing**
+### Real-World Testing
 - **8-minute Formula 1 video** processed
 - **4 piracy types** validated
 - **17 variants** generated and tested
 - **Production-ready** performance
 
-### **Test Coverage**
+### Test Coverage
 - **13 tests** passing (9 unit + 4 integration)
 - **End-to-end workflows** validated
 - **Error handling** verified
 
 ---
 
-## 🏆 **Competitive Advantages**
+## 🏆 Competitive Advantages
 
 1. **First dual-mode system** (video + audio)
 2. **AI-generated legal documents**
@@ -152,21 +152,21 @@ Auto-generate DMCA → Download PDF → Send to platform
 
 ---
 
-## 🚀 **Getting Started**
+## 🚀 Getting Started
 
-### **Prerequisites**
+### Prerequisites
 - Python 3.10+
 - Node.js 18+
 - Git
 
-### **Quick Start**
+### Quick Start
 ```bash
 git clone <repository>
 cd <project-folder>
 ./start.bat
 ```
 
-### **Manual Setup**
+### Manual Setup
 ```bash
 # Terminal 1 - Backend
 cd backend
@@ -181,7 +181,7 @@ npm run dev
 
 ---
 
-## 📈 **Metrics Dashboard**
+## 📈 Metrics Dashboard
 
 Live monitoring includes:
 - **Detection confidence scores**
@@ -191,15 +191,15 @@ Live monitoring includes:
 
 ---
 
-## 🎯 **Impact & Scalability**
+## 🎯 Impact & Scalability
 
-### **Current Capability**
+### Current Capability
 - **Real-time detection** on live streams
 - **Multi-platform support** (Twitch, YouTube, etc.)
 - **Automated enforcement** pipeline
 - **Production performance** validated
 
-### **Scalability Features**
+### Scalability Features
 - **Parallel processing** architecture
 - **Independent audio/video engines**
 - **Redis caching** for performance
@@ -207,16 +207,16 @@ Live monitoring includes:
 
 ---
 
-## 🤝 **Team & Contributions**
+## 🤝 Team & Contributions
 
-### **Core Features**
+### Core Features
 - **Video fingerprinting pipeline**
 - **Audio hash analysis engine**
 - **AI-powered legal automation**
 - **Real-time detection dashboard**
 - **Comprehensive testing suite**
 
-### **Hackathon Progress**
+### Hackathon Progress
 - **16 hours** of development
 - **Multiple commits** per hour
 - **Continuous progress tracking**
@@ -224,7 +224,7 @@ Live monitoring includes:
 
 ---
 
-## 📞 **Contact & Support**
+## 📞 Contact & Support
 
 - **GitHub**: Repository link
 - **Demo**: Live at http://localhost:5173
@@ -232,7 +232,7 @@ Live monitoring includes:
 
 ---
 
-🔥 **Built to win NEXUS 2026 - Transforming piracy enforcement from hours to seconds.**
+🔥 Built to win NEXUS 2026 - Transforming piracy enforcement from hours to seconds.
 
 ## ⚙️ Hackathon Workflow & Rules
 
@@ -242,9 +242,9 @@ To ensure fairness and transparency, we have designed a structured development a
 
 ### 🔗 GitHub Template
 
-👉 **Template Repo:** `{link}`
+👉 Template Repo: `{link}`
 
-* All teams must **fork this repository**
+* All teams must fork this repository
 * Fork name must follow:
 
 ```
@@ -257,7 +257,7 @@ To ensure fairness and transparency, we have designed a structured development a
 12_CodeWarriors_ACMNexus26
 ```
 
-* You may rename the repository **after the event ends**
+* You may rename the repository after the event ends
 
 ---
 
@@ -266,11 +266,11 @@ To ensure fairness and transparency, we have designed a structured development a
 
 ## 👥 Participation Rules
 
-* Team Size: **2–4 members**
+* Team Size: 2–4 members
 * **Pre-created projects are strictly not allowed**
-* All work must be done **during the hackathon timeframe**
+* All work must be done during the hackathon timeframe
 * Only registered team members must participate
-* Do **not attack or interfere** with college infrastructure/network
+* Do not attack or interfere with college infrastructure/network
 * Follow all instructions from the organizing team
 
 ---
@@ -293,8 +293,8 @@ CHANGELOG.md
 
 Every hour, teams must:
 
-* Make **at least one commit**
-* Add **at least one progress update** inside `/progress/`
+* Make at least one commit
+* Add at least one progress update inside `/progress/`
 
 Progress can include:
 
@@ -312,8 +312,8 @@ Progress can include:
 3.png
 ```
 
-* Files must be **numbered sequentially**
-* Each file should reflect **actual development progress**
+* Files must be numbered sequentially
+* Each file should reflect actual development progress
 
 ---
 
@@ -350,7 +350,7 @@ You can:
 
 💡 Tip:
 Instructions are already included in `AGENTS.md`.
-You can simply prompt it to **"CREATE CHANGELOG"** to follow the format.
+Prompt it with "CREATE CHANGELOG" to follow the format.
 
 ---
 
@@ -383,7 +383,7 @@ Please follow them strictly.
 
 ## 👨‍💻 Team Collaboration Rules
 
-* All members must be added as **collaborators**
+* All members must be added as collaborators
 * By the end of the hackathon:
 
   * **Each member must have at least one commit**
@@ -392,7 +392,7 @@ Please follow them strictly.
 
 ## ⚠️ Disqualification Criteria
 
-* Use of **pre-built / pre-developed projects**
+* Use of pre-built / pre-developed projects
 * Fake or manipulated commit history
 * Missing hourly commits or progress updates
 * Incomplete or inconsistent changelog
@@ -405,4 +405,4 @@ Focus on building, learning, and enjoying the experience.
 
 ---
 
-🔥 **Build. Break. Innovate. See you at NEXUS.**
+🔥 Build. Break. Innovate. See you at NEXUS.
